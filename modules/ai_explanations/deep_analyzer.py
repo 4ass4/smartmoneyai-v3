@@ -159,6 +159,7 @@ class DeepMarketAnalyzer:
         strong_fomo = svd_data.get("strong_fomo", False)
         strong_panic = svd_data.get("strong_panic", False)
         phase = svd_data.get("phase", "discovery")
+        liq_dir = liquidity_data.get("direction", {}).get("direction", "neutral")
 
         # Намерения
         if svd_intent == "accumulating":
@@ -218,6 +219,13 @@ class DeepMarketAnalyzer:
         if strong_panic:
             manip.append("Сильная паника: серия продаж + волатильность")
         manip.append(f"Фаза: {phase}")
+        # Эвристика многократных отказов от верхней ликвидности и "последний свип"
+        if liq_dir == "up" and dom.get("side") == "ask" and phase in ("distribution", "manipulation"):
+            manip.append("Несколько тестов верхней ликвидности без закрепления — давление sell walls, риск протяжки вниз")
+            manip.append("Возможен последний свип вверх (снять стопы) перед разворотом вниз")
+        if liq_dir == "down" and dom.get("side") == "bid" and phase in ("accumulation", "manipulation"):
+            manip.append("Несколько тестов нижней ликвидности без пробоя — bids держат, набор позиций")
+            manip.append("Возможен последний свип вниз (снять стопы) перед разворотом вверх")
 
         if manip:
             explanation.append("\n🎭 МАНИПУЛЯЦИИ / КОНТЕКСТ:")
