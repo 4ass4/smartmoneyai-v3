@@ -119,6 +119,60 @@ class RussianExplainer:
         delta = svd_data.get('delta', 0)
         parts.append(f"\n🧠 УМНЫЕ ДЕНЬГИ:")
         parts.append(f"   {RussianExplainer.explain_svd_intent(svd_intent, delta)}")
+        # Доп. признаки манипуляций/потока
+        dom = svd_data.get("dom_imbalance", {})
+        thin = svd_data.get("thin_zones", {})
+        spoof = svd_data.get("spoof_wall", {})
+        spoof_confirmed = svd_data.get("spoof_confirmed", False)
+        spoof_duration = svd_data.get("spoof_duration_ms", 0)
+        sweeps = liquidity_data.get("sweeps", {})
+        fomo = svd_data.get("fomo", False)
+        panic = svd_data.get("panic", False)
+        strong_fomo = svd_data.get("strong_fomo", False)
+        strong_panic = svd_data.get("strong_panic", False)
+        phase = svd_data.get("phase", "discovery")
+        htf_liq = signal_data.get("htf_liq", {})
+        liq1 = htf_liq.get("htf1", {}).get("direction", "neutral") if isinstance(htf_liq, dict) else "neutral"
+        liq2 = htf_liq.get("htf2", {}).get("direction", "neutral") if isinstance(htf_liq, dict) else "neutral"
+
+        # Расшифровки манипуляций/фаз
+        manip_parts = []
+        if dom.get("side") == "bid":
+            manip_parts.append("DOM: дисбаланс в покупках")
+        if dom.get("side") == "ask":
+            manip_parts.append("DOM: дисбаланс в продажах")
+        if thin.get("thin_above"):
+            manip_parts.append("Сверху тонкая ликвидность — возможен быстрый шип вверх")
+        if thin.get("thin_below"):
+            manip_parts.append("Снизу тонкая ликвидность — возможен быстрый шип вниз")
+        if spoof.get("side") or spoof_confirmed:
+            side = spoof.get("side", "")
+            txt = "Спуф-стенка" + (f" ({side})" if side else "")
+            if spoof_duration:
+                txt += f", жила {spoof_duration/1000:.1f}с"
+            if spoof_confirmed:
+                txt += " — подтверждена"
+            manip_parts.append(txt)
+        if sweeps.get("sweep_up"):
+            manip_parts.append("Свип вверх (прокол хай с возвратом)")
+        if sweeps.get("sweep_down"):
+            manip_parts.append("Свип вниз (прокол лоу с возвратом)")
+        if sweeps.get("post_reversal"):
+            manip_parts.append("После свипа — реверс внутрь диапазона")
+        if fomo:
+            manip_parts.append("FOMO: ускоренный приток покупок")
+        if panic:
+            manip_parts.append("Panic: ускоренный приток продаж")
+        if strong_fomo:
+            manip_parts.append("Сильное FOMO (серия покупок + волатильность)")
+        if strong_panic:
+            manip_parts.append("Сильная паника (серия продаж + волатильность)")
+        manip_parts.append(f"Фаза: {phase}")
+        manip_parts.append(f"HTF ликвидность: 1) {liq1}, 2) {liq2}")
+        if manip_parts:
+            parts.append("\n🎭 МАНИПУЛЯЦИИ/ФАКТОРЫ ПОТОКА:")
+            for m in manip_parts:
+                parts.append(f"   • {m}")
         
         # TA
         ta_trend = ta_data.get('trend', 'neutral')
