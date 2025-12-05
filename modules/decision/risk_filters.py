@@ -13,10 +13,12 @@ def apply_risk_filters(signals, confidence):
         Dict с результатом фильтрации
     """
     # Минимальный confidence (снижен порог для тестирования)
-    if confidence < 3.0:
+    # Можно снизить до 2.0 для более частых сигналов
+    MIN_CONFIDENCE = 2.0
+    if confidence < MIN_CONFIDENCE:
         return {
             "allowed": False,
-            "reason": "Слишком низкая уверенность сигнала"
+            "reason": f"Слишком низкая уверенность сигнала ({confidence:.1f} < {MIN_CONFIDENCE})"
         }
     
     # Проверка на конфликт сигналов

@@ -46,6 +46,9 @@ class DecisionEngine:
         filtered = apply_risk_filters(signals, confidence)
         
         if not filtered["allowed"]:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"🚫 Сигнал {direction} заблокирован фильтром риска: {filtered['reason']} (confidence: {confidence:.1f}/10)")
             return {
                 "signal": "WAIT",
                 "confidence": 0,
