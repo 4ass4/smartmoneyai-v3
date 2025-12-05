@@ -34,9 +34,16 @@ class NotificationManager:
             ta_data: данные TA (опционально)
             current_price: текущая цена (опционально)
         """
-        if not self.bot or not self.chat_id:
-            logger.warning("Бот или chat_id не настроены")
+        if not self.bot:
+            logger.warning("⚠️ Бот не настроен, сигнал не отправлен")
             return
+        
+        if not self.chat_id:
+            logger.warning(f"⚠️ chat_id не настроен (текущее значение: {self.chat_id}), сигнал не отправлен")
+            logger.warning(f"   Проверьте TELEGRAM_CHAT_ID или TELEGRAM_ADMIN_ID в .env файле")
+            return
+        
+        logger.info(f"📤 Отправка сигнала в chat_id: {self.chat_id}")
 
         try:
             message = format_signal(

@@ -157,17 +157,28 @@ async def main():
                 if handlers:
                     handlers.set_last_signal(signal)
                 
+                # Логирование всех сигналов для отладки
+                signal_type = signal.get("signal", "UNKNOWN")
+                confidence = signal.get("confidence", 0)
+                logger.info(f"📊 Сгенерирован сигнал: {signal_type} (confidence: {confidence:.1f}/10)")
+                
                 # Отправка сигнала в Telegram с детальными данными
                 if signal and signal.get("signal") != "WAIT":
-                    await notification_manager.send_signal(
-                        signal,
-                        structure_data=structure_data,
-                        liquidity_data=liquidity_data,
-                        svd_data=svd_data,
-                        ta_data=ta_data,
-                        current_price=market_data["ohlcv"]["close"].iloc[-1]
-                    )
-                    logger.info(f"Сигнал: {signal.get('signal')} (confidence: {signal.get('confidence')})")
+                    logger.info(f"✅ Сигнал {signal_type} не WAIT, отправляем...")
+                    try:
+                        await notification_manager.send_signal(
+                            signal,
+                            structure_data=structure_data,
+                            liquidity_data=liquidity_data,
+                            svd_data=svd_data,
+                            ta_data=ta_data,
+                            current_price=market_data["ohlcv"]["close"].iloc[-1]
+                        )
+                        logger.info(f"✅ Сигнал {signal_type} успешно отправлен в Telegram")
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка отправки сигнала: {e}", exc_info=True)
+                else:
+                    logger.debug(f"⏸️ Сигнал WAIT или отсутствует, пропускаем отправку")
                 
             except Exception as e:
                 logger.error(f"Ошибка анализа: {e}", exc_info=True)
