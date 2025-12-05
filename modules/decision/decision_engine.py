@@ -231,6 +231,7 @@ class DecisionEngine:
             final_confidence -= 0.3
         # Спуф подтвержден против направления — штраф; по направлению — небольшой бонус
         spoof_side = signals["svd"].get("spoof_wall", {}).get("side")
+        spoof_confirmed = signals["svd"].get("spoof_confirmed", False)
         if spoof_confirmed and spoof_side:
             if spoof_side == "ask" and signals.get("signal") == "BUY":
                 final_confidence -= 0.3
