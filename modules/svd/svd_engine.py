@@ -9,6 +9,7 @@ from .orderbook_thin import detect_thin_zones
 from .spoof_detector import detect_spoof_wall
 from .trade_buckets import bucket_trades
 from .svd_score import svd_confidence_score
+from .orderbook_path import compute_path_cost
 from collections import deque
 
 
@@ -40,6 +41,7 @@ class SVDEngine:
         current_ts = trades[-1].get("timestamp") if trades else None
         prev_price = trades[-2].get("price") if trades and len(trades) > 1 else None
         spoof_wall = detect_spoof_wall(orderbook, current_price) if orderbook and current_price else {"side": None, "price": None, "volume": None, "factor": 1.0}
+        path_cost = compute_path_cost(orderbook, current_price) if orderbook and current_price else {"up": 0.0, "down": 0.0}
         bucket_metrics = bucket_trades(trades, bucket_seconds=5)
 
         # Определяем лучший бид/аск для DOM chasing
@@ -161,6 +163,7 @@ class SVDEngine:
             "spoof_events": list(self._spoof_events),
             "dom_chasing": dom_chasing,
             "buckets": bucket_metrics,
+            "path_cost": path_cost,
             "fomo": fomo_flag,
             "panic": panic_flag,
             "strong_fomo": strong_fomo,

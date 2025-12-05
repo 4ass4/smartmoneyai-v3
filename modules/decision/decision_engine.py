@@ -40,6 +40,7 @@ class DecisionEngine:
         
         # Определение направления
         direction = self._determine_direction(signals)
+        signals["signal"] = direction
         
         # Расчет confidence
         confidence = self._calculate_confidence(signals)
@@ -226,6 +227,24 @@ class DecisionEngine:
         # Штраф за противоречия (каждое противоречие снижает confidence на 1.5)
         contradiction_penalty = contradictions * 1.5
         base_confidence = max(0, base_confidence - contradiction_penalty)
+
+        # Путь наименьшего сопротивления (path resistance)
+        path_cost = self._compute_path_resistance(signals)
+        signal_dir = signals.get("signal")
+        if path_cost["up"] < path_cost["down"]:
+            # вверх дешевле
+            if signal_dir == "BUY":
+                base_confidence += 0.3
+            if liq_dir == "up":
+                base_confidence += 0.2
+        elif path_cost["down"] < path_cost["up"]:
+            # вниз дешевле
+            if signal_dir == "SELL":
+                base_confidence += 0.3
+            if liq_dir == "down":
+                base_confidence += 0.2
+        else:
+            base_confidence -= 0.1  # неопределенность пути
         
         # Учет фаз SVD: execution (+), manipulation (-), distribution (+слегка)
         phase_bonus = 0
@@ -283,6 +302,59 @@ class DecisionEngine:
 
         return min(max(final_confidence, 0), 10)
     
+    def _compute_path_resistance(self, signals):
+        """
+        Приближенный расчет "стоимости" пути вверх/вниз:
+        - path_cost из SVD (интеграл объёмов в стакане)
+        - расстояние до ближайших кластеров ликвидности (stop_clusters, swing_liq, ATH/ATL)
+        """
+        path = signals.get("svd", {}).get("path_cost", {"up": 0.0, "down": 0.0})
+        current_price = signals.get("current_price")
+        liq = signals.get("liquidity", {})
+        stop_clusters = liq.get("stop_clusters", [])
+        swing_liq = liq.get("swing_liquidity", [])
+        ath_atl = liq.get("ath_atl", {})
+
+        nearest_above = None
+        nearest_below = None
+        if current_price:
+            for src in (stop_clusters + swing_liq):
+                price = src.get("price")
+                t = src.get("type")
+                if price is None:
+                    continue
+                if price > current_price and t == "buy_stops":
+                    dist = (price - current_price) / current_price
+                    if nearest_above is None or dist < nearest_above:
+                        nearest_above = dist
+                if price < current_price and t == "sell_stops":
+                    dist = (current_price - price) / current_price
+                    if nearest_below is None or dist < nearest_below:
+                        nearest_below = dist
+            # ATH/ATL
+            ath = ath_atl.get("ath", {}).get("price")
+            atl = ath_atl.get("atl", {}).get("price")
+            if ath and ath > current_price:
+                dist = (ath - current_price) / current_price
+                if nearest_above is None or dist < nearest_above:
+                    nearest_above = dist
+            if atl and atl < current_price:
+                dist = (current_price - atl) / current_price
+                if nearest_below is None or dist < nearest_below:
+                    nearest_below = dist
+
+        # если нет уровней — считаем их далёкими
+        if nearest_above is None:
+            nearest_above = 1.0
+        if nearest_below is None:
+            nearest_below = 1.0
+
+        # комбинированная "стоимость": стакан + расстояние до ближайшего кластера
+        cost_up = path.get("up", 0.0) + nearest_above
+        cost_down = path.get("down", 0.0) + nearest_below
+
+        return {"up": cost_up, "down": cost_down}
+
     def _generate_explanation(self, signals, direction, confidence):
         """Генерирует объяснение на русском с учетом реальных данных"""
         parts = []
