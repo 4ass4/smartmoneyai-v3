@@ -1,8 +1,11 @@
 # modules/svd/svd_score.py
 
-def svd_confidence_score(delta, absorption, aggression, velocity):
+def svd_confidence_score(delta, absorption, aggression, velocity, dom_imbalance=None, bucket_metrics=None):
     """
     Финальный Confidence Score SVD: 0–10
+    Добавлены:
+      - дисбаланс стакана (DOM)
+      - краткосрочные бакеты сделок (delta/velocity)
     """
 
     score = 0
@@ -51,6 +54,25 @@ def svd_confidence_score(delta, absorption, aggression, velocity):
         score += 1
     elif vel > 0:
         score += 0.5
+
+    # 5. Дисбаланс стакана (DOM)
+    if dom_imbalance:
+        imb = dom_imbalance.get("imbalance", 1)
+        side = dom_imbalance.get("side", "neutral")
+        if side != "neutral":
+            if imb > 1.5 or imb < 0.67:
+                score += 1.0
+            elif imb > 1.2 or imb < 0.83:
+                score += 0.5
+
+    # 6. Краткосрочные бакеты сделок
+    if bucket_metrics:
+        last_delta = abs(bucket_metrics.get("last_bucket_delta", 0))
+        last_vel = bucket_metrics.get("last_bucket_velocity", 0)
+        if last_delta > 5000:
+            score += 0.5
+        if last_vel > 10:
+            score += 0.5
 
     return min(score, 10)
 

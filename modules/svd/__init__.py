@@ -9,6 +9,8 @@ from .absorption import detect_absorption
 from .aggression import detect_aggression
 from .velocity import detect_trade_velocity
 from .svd_score import svd_confidence_score
+from .orderbook_imbalance import compute_orderbook_imbalance
+from .trade_buckets import bucket_trades
 
 __all__ = [
     'SVDEngine',
@@ -16,6 +18,8 @@ __all__ = [
     'detect_absorption',
     'detect_aggression',
     'detect_trade_velocity',
-    'svd_confidence_score'
+    'svd_confidence_score',
+    'compute_orderbook_imbalance',
+    'bucket_trades'
 ]
 
