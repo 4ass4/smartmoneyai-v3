@@ -14,7 +14,7 @@ from .svd_score import svd_confidence_score
 class SVDEngine:
     def __init__(self):
         # Память для трекинга спуфов и движения лучшего бид/аск
-        self._prev_spoof = None
+        self._prev_spoof = None  # {"side":..., "price":..., "ts_start":..., "ts_last":...}
         self._prev_best = {"bid": None, "ask": None, "ts": None}
 
     def analyze(self, trades: list, orderbook: dict):
@@ -59,21 +59,32 @@ class SVDEngine:
         elif dom_imbalance.get("side") == "ask" and intent == "distributing":
             intent = "distributing"
 
-        # Простой трекинг спуфов: если была стена и исчезла без движения цены — подтверждаем spoof
+        # Трекинг спуфов: время жизни и исчезновение
         spoof_confirmed = False
+        spoof_duration = 0
         if self._prev_spoof and self._prev_spoof.get("side"):
             prev = self._prev_spoof
             if (not spoof_wall.get("side")) and current_price:
                 price_move = abs(current_price - prev.get("price", current_price)) / current_price
-                # ограничиваем по времени (если есть метка времени trades)
                 time_ok = True
-                if current_ts and prev.get("ts"):
-                    time_ok = (current_ts - prev["ts"]) < 10_000  # 10 секунд
-                if price_move < 0.0015 and time_ok:  # <0.15% движения — вероятный спуф
+                if current_ts and prev.get("ts_last"):
+                    spoof_duration = (current_ts - prev["ts_start"]) if prev.get("ts_start") else (current_ts - prev.get("ts_last", current_ts))
+                    time_ok = spoof_duration < 15_000  # <15s жизнь стены
+                if price_move < 0.0015 and time_ok:
                     spoof_confirmed = True
         # обновляем память спуфа
         if spoof_wall.get("side"):
-            self._prev_spoof = {"side": spoof_wall["side"], "price": spoof_wall.get("price"), "ts": current_ts}
+            # если стена та же сторона, продлеваем ts_last, ts_start
+            if self._prev_spoof and self._prev_spoof.get("side") == spoof_wall.get("side"):
+                start_ts = self._prev_spoof.get("ts_start", current_ts)
+            else:
+                start_ts = current_ts
+            self._prev_spoof = {
+                "side": spoof_wall["side"],
+                "price": spoof_wall.get("price"),
+                "ts_start": start_ts,
+                "ts_last": current_ts
+            }
         else:
             self._prev_spoof = None
 
@@ -128,6 +139,7 @@ class SVDEngine:
             "thin_zones": thin_zones,
             "spoof_wall": spoof_wall,
             "spoof_confirmed": spoof_confirmed,
+            "spoof_duration_ms": spoof_duration,
             "dom_chasing": dom_chasing,
             "buckets": bucket_metrics,
             "fomo": fomo_flag,

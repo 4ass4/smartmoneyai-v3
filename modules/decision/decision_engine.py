@@ -229,6 +229,17 @@ class DecisionEngine:
             final_confidence -= 0.3
         if strong_panic:
             final_confidence -= 0.3
+        # Спуф подтвержден против направления — штраф; по направлению — небольшой бонус
+        spoof_side = signals["svd"].get("spoof_wall", {}).get("side")
+        if spoof_confirmed and spoof_side:
+            if spoof_side == "ask" and signals.get("signal") == "BUY":
+                final_confidence -= 0.3
+            if spoof_side == "bid" and signals.get("signal") == "SELL":
+                final_confidence -= 0.3
+            if spoof_side == "ask" and signals.get("signal") == "SELL":
+                final_confidence += 0.1
+            if spoof_side == "bid" and signals.get("signal") == "BUY":
+                final_confidence += 0.1
 
         # Реакция на sweeps: свип вверх усиливает SELL, свип вниз усиливает BUY
         if sweeps.get("sweep_up") and signals.get("signal") == "SELL":
@@ -259,6 +270,7 @@ class DecisionEngine:
         thin = signals["svd"].get("thin_zones", {})
         spoof = signals["svd"].get("spoof_wall", {})
         spoof_confirmed = signals["svd"].get("spoof_confirmed", False)
+        spoof_duration_ms = signals["svd"].get("spoof_duration_ms", 0)
         dom_chasing = signals["svd"].get("dom_chasing", {"bid_chasing": False, "ask_chasing": False})
         sweeps = signals["liquidity"].get("sweeps", {"sweep_up": False, "sweep_down": False})
         fomo_flag = signals["svd"].get("fomo", False)
@@ -284,6 +296,8 @@ class DecisionEngine:
                 parts.append("сверху тонкая ликвидность — риск ускоренного роста")
             if spoof.get("side") == "bid" or spoof_confirmed:
                 parts.append("возможен спуф на покупку (осторожно с ложной поддержкой)")
+                if spoof_duration_ms:
+                    parts.append(f"время жизни стены: {spoof_duration_ms/1000:.1f}с")
             if dom_chasing.get("bid_chasing"):
                 parts.append("bids преследуют цену (chasing)")
         elif direction == "SELL":
@@ -303,6 +317,8 @@ class DecisionEngine:
                 parts.append("снизу тонкая ликвидность — риск ускоренного падения")
             if spoof.get("side") == "ask" or spoof_confirmed:
                 parts.append("возможен спуф на продажу (осторожно с ложным давлением)")
+                if spoof_duration_ms:
+                    parts.append(f"время жизни стены: {spoof_duration_ms/1000:.1f}с")
             if dom_chasing.get("ask_chasing"):
                 parts.append("asks преследуют цену (chasing)")
         else:
