@@ -21,26 +21,37 @@ def apply_risk_filters(signals, confidence):
             "reason": f"Слишком низкая уверенность сигнала ({confidence:.1f} < {MIN_CONFIDENCE})"
         }
     
-    # Проверка на конфликт сигналов
+    # Проверка на критический конфликт сигналов
+    # (теперь более мягкая - только если все сигналы противоречат)
     liq_dir = signals["liquidity"].get("direction", {}).get("direction", "neutral")
     svd_intent = signals["svd"].get("intent", "unclear")
     trend = signals["structure"].get("trend", "range")
+    signal_type = signals.get("signal", "WAIT")
     
-    # Если все сигналы противоречат друг другу
-    conflicts = 0
-    if liq_dir == "up" and trend == "bearish":
-        conflicts += 1
-    if liq_dir == "down" and trend == "bullish":
-        conflicts += 1
-    if svd_intent == "accumulating" and trend == "bearish":
-        conflicts += 1
-    if svd_intent == "distributing" and trend == "bullish":
-        conflicts += 1
+    # Критические противоречия (блокируем только при полном конфликте)
+    critical_conflicts = 0
     
-    if conflicts >= 2:
+    # Противоречие: сигнал BUY, но SVD distributing
+    if signal_type == "BUY" and svd_intent == "distributing":
+        critical_conflicts += 1
+    
+    # Противоречие: сигнал SELL, но SVD accumulating
+    if signal_type == "SELL" and svd_intent == "accumulating":
+        critical_conflicts += 1
+    
+    # Противоречие: сигнал BUY, но ликвидность вниз
+    if signal_type == "BUY" and liq_dir == "down":
+        critical_conflicts += 1
+    
+    # Противоречие: сигнал SELL, но ликвидность вверх
+    if signal_type == "SELL" and liq_dir == "up":
+        critical_conflicts += 1
+    
+    # Блокируем только если 2+ критических противоречия ИЛИ все 3 основных сигнала противоречат
+    if critical_conflicts >= 2:
         return {
             "allowed": False,
-            "reason": "Слишком много конфликтов между сигналами"
+            "reason": f"Критические противоречия между сигналами ({critical_conflicts} конфликтов)"
         }
     
     # Проверка на перекупленность/перепроданность

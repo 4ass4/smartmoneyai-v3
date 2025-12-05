@@ -78,40 +78,49 @@ class DecisionEngine:
         }
     
     def _determine_direction(self, signals):
-        """Определяет финальное направление на основе всех сигналов"""
+        """Определяет финальное направление на основе всех сигналов с учетом весов"""
         votes = {"BUY": 0, "SELL": 0, "WAIT": 0}
         
-        # Liquidity
+        # Liquidity (вес 2 - самый важный для Smart Money)
         liq_dir = signals["liquidity"].get("direction", {}).get("direction", "neutral")
         if liq_dir == "up":
             votes["BUY"] += 2
         elif liq_dir == "down":
             votes["SELL"] += 2
         
-        # SVD
+        # SVD (вес 1.5 - важен, но может быть противоречивым)
         svd_intent = signals["svd"].get("intent", "unclear")
-        if svd_intent == "accumulating":
-            votes["BUY"] += 1
-        elif svd_intent == "distributing":
-            votes["SELL"] += 1
+        svd_conf = signals["svd"].get("confidence", 0)
+        if svd_intent == "accumulating" and svd_conf > 0:
+            votes["BUY"] += 1.5
+        elif svd_intent == "distributing" and svd_conf > 0:
+            votes["SELL"] += 1.5
+        elif svd_intent == "unclear":
+            # Если SVD unclear, не добавляем голоса, но и не блокируем
+            pass
         
-        # Market Structure
+        # Market Structure (вес 1)
         trend = signals["structure"].get("trend", "range")
         if trend == "bullish":
             votes["BUY"] += 1
         elif trend == "bearish":
             votes["SELL"] += 1
         
-        # TA
+        # TA (вес 0.5 - наименьший вес, так как может быть запаздывающим)
         ta_trend = signals["ta"].get("trend", "neutral")
         if ta_trend == "bullish":
-            votes["BUY"] += 1
+            votes["BUY"] += 0.5
         elif ta_trend == "bearish":
-            votes["SELL"] += 1
+            votes["SELL"] += 0.5
         
         # Определение победителя
         max_votes = max(votes.values())
         if max_votes == 0:
+            return "WAIT"
+        
+        # Если разница между BUY и SELL меньше 1, возвращаем WAIT (неопределенность)
+        vote_diff = abs(votes["BUY"] - votes["SELL"])
+        if vote_diff < 1.0:
             return "WAIT"
         
         for signal, count in votes.items():
@@ -121,7 +130,7 @@ class DecisionEngine:
         return "WAIT"
     
     def _calculate_confidence(self, signals):
-        """Рассчитывает итоговый confidence (0-10)"""
+        """Рассчитывает итоговый confidence (0-10) с учетом противоречий"""
         scores = []
         
         # Liquidity confidence (если есть)
@@ -134,41 +143,56 @@ class DecisionEngine:
             if svd_conf > 0:
                 scores.append(svd_conf)
         
-        # Оцениваем по согласованности сигналов
+        # Оцениваем по согласованности и противоречиям
         liq_dir = signals["liquidity"].get("direction", {}).get("direction", "neutral")
         svd_intent = signals["svd"].get("intent", "unclear")
         trend = signals["structure"].get("trend", "range")
         ta_trend = signals["ta"].get("trend", "neutral")
         
         agreement = 0
+        contradictions = 0
+        
         # Согласованность Liquidity и SVD
         if (liq_dir == "up" and svd_intent == "accumulating") or \
            (liq_dir == "down" and svd_intent == "distributing"):
             agreement += 2
+        elif (liq_dir == "up" and svd_intent == "distributing") or \
+             (liq_dir == "down" and svd_intent == "accumulating"):
+            contradictions += 1  # Противоречие
         
         # Согласованность Structure и Liquidity
         if (trend == "bullish" and liq_dir == "up") or \
            (trend == "bearish" and liq_dir == "down"):
             agreement += 2
+        elif (trend == "bullish" and liq_dir == "down") or \
+             (trend == "bearish" and liq_dir == "up"):
+            contradictions += 1  # Противоречие
         elif trend == "range":
             agreement += 1
         
         # Согласованность TA и Structure
         if ta_trend == trend:
             agreement += 1
+        elif (ta_trend == "bullish" and trend == "bearish") or \
+             (ta_trend == "bearish" and trend == "bullish"):
+            contradictions += 0.5  # Меньший вес для TA
         
         # Базовый confidence от согласованности
         base_confidence = min(agreement * 1.5, 6)
         
+        # Штраф за противоречия (каждое противоречие снижает confidence на 1.5)
+        contradiction_penalty = contradictions * 1.5
+        base_confidence = max(0, base_confidence - contradiction_penalty)
+        
         # Если есть confidence от модулей, усредняем
         if scores:
             avg_confidence = sum(scores) / len(scores)
-            # Комбинируем: 60% от модулей, 40% от согласованности
+            # Комбинируем: 60% от модулей, 40% от согласованности (уже с учетом противоречий)
             final_confidence = (avg_confidence * 0.6) + (base_confidence * 0.4)
         else:
             final_confidence = base_confidence
         
-        return min(final_confidence, 10)
+        return min(max(final_confidence, 0), 10)
     
     def _generate_explanation(self, signals, direction, confidence):
         """Генерирует объяснение на русском с учетом реальных данных"""
