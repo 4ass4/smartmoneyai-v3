@@ -148,6 +148,9 @@ class DecisionEngine:
         svd_intent = signals["svd"].get("intent", "unclear")
         trend = signals["structure"].get("trend", "range")
         ta_trend = signals["ta"].get("trend", "neutral")
+        svd_phase = signals["svd"].get("phase", "discovery")
+        fomo_flag = signals["svd"].get("fomo", False)
+        panic_flag = signals["svd"].get("panic", False)
         
         agreement = 0
         contradictions = 0
@@ -184,6 +187,16 @@ class DecisionEngine:
         contradiction_penalty = contradictions * 1.5
         base_confidence = max(0, base_confidence - contradiction_penalty)
         
+        # Учет фаз SVD: execution (+), manipulation (-), distribution (+слегка)
+        phase_bonus = 0
+        if svd_phase == "execution":
+            phase_bonus += 0.5
+        elif svd_phase == "manipulation":
+            phase_bonus -= 0.5
+        elif svd_phase == "distribution":
+            phase_bonus += 0.2
+        base_confidence = max(0, min(10, base_confidence + phase_bonus))
+
         # Если есть confidence от модулей, усредняем
         if scores:
             avg_confidence = sum(scores) / len(scores)
@@ -192,6 +205,12 @@ class DecisionEngine:
         else:
             final_confidence = base_confidence
         
+        # Доп. корректировки от fomo/panic (прокси поведения толпы)
+        if fomo_flag:
+            final_confidence -= 0.2
+        if panic_flag:
+            final_confidence -= 0.2
+
         return min(max(final_confidence, 0), 10)
     
     def _generate_explanation(self, signals, direction, confidence):
@@ -203,6 +222,14 @@ class DecisionEngine:
         trend = signals["structure"].get("trend", "range")
         delta = signals["svd"].get("delta", 0)
         absorption = signals["svd"].get("absorption", {})
+        dom = signals["svd"].get("dom_imbalance", {})
+        thin = signals["svd"].get("thin_zones", {})
+        spoof = signals["svd"].get("spoof_wall", {})
+        spoof_confirmed = signals["svd"].get("spoof_confirmed", False)
+        sweeps = signals["liquidity"].get("sweeps", {"sweep_up": False, "sweep_down": False})
+        fomo_flag = signals["svd"].get("fomo", False)
+        panic_flag = signals["svd"].get("panic", False)
+        phase = signals["svd"].get("phase", "discovery")
         
         if direction == "BUY":
             parts.append("Сигнал на покупку")
@@ -215,6 +242,12 @@ class DecisionEngine:
                 parts.append("⚠️ ВНИМАНИЕ: крупные игроки распределяют позиции (противоречие с сигналом)")
             if absorption.get("absorbing"):
                 parts.append(f"обнаружено поглощение ({absorption.get('side', 'unknown')})")
+            if dom.get("side") == "bid":
+                parts.append("DOM дисбаланс в покупках")
+            if thin.get("thin_above"):
+                parts.append("сверху тонкая ликвидность — риск ускоренного роста")
+            if spoof.get("side") == "bid" or spoof_confirmed:
+                parts.append("возможен спуф на покупку (осторожно с ложной поддержкой)")
         elif direction == "SELL":
             parts.append("Сигнал на продажу")
             if liq_dir == "down":
@@ -226,8 +259,29 @@ class DecisionEngine:
                 parts.append("⚠️ ВНИМАНИЕ: крупные игроки накапливают позиции (противоречие с сигналом)")
             if absorption.get("absorbing"):
                 parts.append(f"обнаружено поглощение ({absorption.get('side', 'unknown')})")
+            if dom.get("side") == "ask":
+                parts.append("DOM дисбаланс в продажах")
+            if thin.get("thin_below"):
+                parts.append("снизу тонкая ликвидность — риск ускоренного падения")
+            if spoof.get("side") == "ask" or spoof_confirmed:
+                parts.append("возможен спуф на продажу (осторожно с ложным давлением)")
         else:
             return "Недостаточно сигналов для принятия решения. Рекомендуется ожидание."
+
+        # Sweep сигналы
+        if sweeps.get("sweep_up"):
+            parts.append("был свип вверх (прокол хай с возвратом)")
+        if sweeps.get("sweep_down"):
+            parts.append("был свип вниз (прокол лоу с возвратом)")
+
+        # Флаги толпы
+        if fomo_flag:
+            parts.append("⚠️ FOMO: ускоренный приток покупок")
+        if panic_flag:
+            parts.append("⚠️ Panic: ускоренный приток продаж")
+
+        # Фаза
+        parts.append(f"Фаза: {phase}")
         
         return ". ".join(parts) + f" (уверенность: {confidence:.1f}/10)"
     
