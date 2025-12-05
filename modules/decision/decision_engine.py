@@ -13,7 +13,7 @@ class DecisionEngine:
         self.config = config
         self.min_confidence = 7.0 if config is None else getattr(config, 'MIN_CONFIDENCE', 7.0)
 
-    def analyze(self, liquidity_data, svd_data, market_structure, ta_data, current_price=None, htf_context=None):
+    def analyze(self, liquidity_data, svd_data, market_structure, ta_data, current_price=None, htf_context=None, htf_liquidity=None):
         """
         Главный метод принятия решения
         
@@ -34,7 +34,8 @@ class DecisionEngine:
             "structure": market_structure,
             "ta": ta_data,
             "current_price": current_price,
-            "htf": htf_context or {}
+            "htf": htf_context or {},
+            "htf_liq": htf_liquidity or {}
         }
         
         # Определение направления
@@ -151,6 +152,8 @@ class DecisionEngine:
         ta_trend = signals["ta"].get("trend", "neutral")
         htf_trend1 = signals.get("htf", {}).get("htf1", "unknown")
         htf_trend2 = signals.get("htf", {}).get("htf2", "unknown")
+        htf_liq1 = signals.get("htf_liq", {}).get("htf1", {}).get("direction", "neutral")
+        htf_liq2 = signals.get("htf_liq", {}).get("htf2", {}).get("direction", "neutral")
         svd_phase = signals["svd"].get("phase", "discovery")
         fomo_flag = signals["svd"].get("fomo", False)
         panic_flag = signals["svd"].get("panic", False)
@@ -194,6 +197,14 @@ class DecisionEngine:
                     htf_bonus += 0.3
                 elif trend != "range" and htf != trend:
                     htf_bonus -= 0.3
+
+        # HTF liquidity bias: если направление HTF ликвидности совпадает с локальным liq_dir — бонус
+        for htf_liq in [htf_liq1, htf_liq2]:
+            if htf_liq in ("up", "down"):
+                if htf_liq == liq_dir:
+                    htf_bonus += 0.2
+                elif liq_dir != "neutral" and htf_liq != liq_dir:
+                    htf_bonus -= 0.2
         
         # Базовый confidence от согласованности + HTF
         base_confidence = min(agreement * 1.5, 6) + htf_bonus
@@ -279,6 +290,8 @@ class DecisionEngine:
         strong_fomo = signals["svd"].get("strong_fomo", False)
         strong_panic = signals["svd"].get("strong_panic", False)
         phase = signals["svd"].get("phase", "discovery")
+        htf_liq1 = signals.get("htf_liq", {}).get("htf1", {}).get("direction", "neutral")
+        htf_liq2 = signals.get("htf_liq", {}).get("htf2", {}).get("direction", "neutral")
         
         if direction == "BUY":
             parts.append("Сигнал на покупку")
@@ -343,6 +356,8 @@ class DecisionEngine:
 
         # Фаза
         parts.append(f"Фаза: {phase}")
+        # HTF ликвидность
+        parts.append(f"HTF ликвидность: 1) {htf_liq1}, 2) {htf_liq2}")
         
         return ". ".join(parts) + f" (уверенность: {confidence:.1f}/10)"
     

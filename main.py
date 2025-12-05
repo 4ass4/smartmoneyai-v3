@@ -130,6 +130,9 @@ async def main():
                 htf2_df = await data_feed.get_ohlcv_tf(config.HTF_2_INTERVAL)
                 htf1_struct = market_structure_engine.analyze(htf1_df) if not htf1_df.empty else {"trend": "unknown"}
                 htf2_struct = market_structure_engine.analyze(htf2_df) if not htf2_df.empty else {"trend": "unknown"}
+                # HTF liquidity
+                htf1_liq = liquidity_engine.analyze(htf1_df, htf1_struct) if not htf1_df.empty else {}
+                htf2_liq = liquidity_engine.analyze(htf2_df, htf2_struct) if not htf2_df.empty else {}
                 
                 # 2. Liquidity
                 liquidity_data = liquidity_engine.analyze(market_data["ohlcv"], structure_data)
@@ -154,6 +157,10 @@ async def main():
                     htf_context={
                         "htf1": htf1_struct.get("trend", "unknown"),
                         "htf2": htf2_struct.get("trend", "unknown"),
+                    },
+                    htf_liquidity={
+                        "htf1": htf1_liq.get("direction", {}) if htf1_liq else {},
+                        "htf2": htf2_liq.get("direction", {}) if htf2_liq else {},
                     }
                 )
                 
