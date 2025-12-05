@@ -1,4 +1,4 @@
-def detect_sweep(df, lookback: int = 5):
+def detect_sweep(df, lookback: int = 5, stop_prices_above=None, stop_prices_below=None):
     """
     Обнаружение ликвидити-свипа на последних свечах:
       - sweep_up: прокол недавних хайев с возвратом
@@ -8,11 +8,20 @@ def detect_sweep(df, lookback: int = 5):
         df: OHLCV DataFrame
         lookback: сколько предыдущих свечей брать для хай/лоу
 
+    Дополнительно можно передать уровни стопов/ликвидности:
+        stop_prices_above: список цен стопов выше (buy stops)
+        stop_prices_below: список цен стопов ниже (sell stops)
+
     Returns:
-        {"sweep_up": bool, "sweep_down": bool}
+        {
+            "sweep_up": bool,
+            "sweep_down": bool,
+            "hit_liquidity_above": bool,
+            "hit_liquidity_below": bool
+        }
     """
     if df is None or len(df) < lookback + 2:
-        return {"sweep_up": False, "sweep_down": False}
+        return {"sweep_up": False, "sweep_down": False, "hit_liquidity_above": False, "hit_liquidity_below": False}
 
     last = df.iloc[-1]
     prev = df.iloc[-2]
@@ -21,6 +30,8 @@ def detect_sweep(df, lookback: int = 5):
 
     sweep_up = False
     sweep_down = False
+    hit_above = False
+    hit_below = False
 
     # Sweep вверх: текущий хай > max предыдущих, но закрытие ниже max предыдущих
     if last["high"] > highs.max() and last["close"] < highs.max():
@@ -30,5 +41,17 @@ def detect_sweep(df, lookback: int = 5):
     if last["low"] < lows.min() and last["close"] > lows.min():
         sweep_down = True
 
-    return {"sweep_up": sweep_up, "sweep_down": sweep_down}
+    # Проверка, задел ли свип стоп-уровни
+    if stop_prices_above:
+        for p in stop_prices_above:
+            if last["high"] >= p >= last["close"]:
+                hit_above = True
+                break
+    if stop_prices_below:
+        for p in stop_prices_below:
+            if last["low"] <= p <= last["close"]:
+                hit_below = True
+                break
+
+    return {"sweep_up": sweep_up, "sweep_down": sweep_down, "hit_liquidity_above": hit_above, "hit_liquidity_below": hit_below}
 

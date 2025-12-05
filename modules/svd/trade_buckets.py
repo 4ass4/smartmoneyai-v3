@@ -71,16 +71,33 @@ def bucket_trades(trades: list, bucket_seconds: int = 5):
 
     # Mean velocity across all buckets
     velocities = []
+    deltas = []
     for bid in sorted_ids:
-        _, _, vel = calc_bucket_metrics(buckets[bid])
+        d, _, vel = calc_bucket_metrics(buckets[bid])
         velocities.append(vel)
+        deltas.append(d)
     mean_vel = sum(velocities) / len(velocities) if velocities else 0
+
+    # streaks по дельте
+    pos_streak = neg_streak = 0
+    for d in deltas:
+        if d > 0:
+            pos_streak += 1
+            neg_streak = 0
+        elif d < 0:
+            neg_streak += 1
+            pos_streak = 0
+        else:
+            pos_streak = 0
+            neg_streak = 0
 
     return {
         "bucket_count": len(sorted_ids),
         "last_bucket_delta": last_delta,
         "last_bucket_aggr": last_aggr,
         "last_bucket_velocity": last_vel,
-        "mean_velocity": mean_vel
+        "mean_velocity": mean_vel,
+        "pos_streak": pos_streak,
+        "neg_streak": neg_streak
     }
 

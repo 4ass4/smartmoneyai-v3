@@ -94,11 +94,13 @@ class SVDEngine:
             last_delta = bucket_metrics.get("last_bucket_delta", 0)
             last_vel = bucket_metrics.get("last_bucket_velocity", 0)
             mean_vel = bucket_metrics.get("mean_velocity", 0)
-            # FOMO: положительная дельта и скорость выше средней
-            if last_delta > 0 and last_vel > mean_vel * 1.2 and last_vel > 5:
+            pos_streak = bucket_metrics.get("pos_streak", 0)
+            neg_streak = bucket_metrics.get("neg_streak", 0)
+            # FOMO: серия положительных бакетов и скорость выше средней
+            if (last_delta > 0 or pos_streak >= 2) and last_vel > max(mean_vel * 1.1, 5):
                 fomo_flag = True
-            # Panic: отрицательная дельта и скорость выше средней
-            if last_delta < 0 and last_vel > mean_vel * 1.2 and last_vel > 5:
+            # Panic: серия отрицательных бакетов и скорость выше средней
+            if (last_delta < 0 or neg_streak >= 2) and last_vel > max(mean_vel * 1.1, 5):
                 panic_flag = True
 
         # Определяем фазу (грубая эвристика)
