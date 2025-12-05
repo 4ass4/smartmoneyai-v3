@@ -1,0 +1,133 @@
+# modules/ai_explanations/russian_explainer.py
+
+"""
+Русскоязычные объяснения с конкретизацией
+"""
+
+
+class RussianExplainer:
+    """Генератор понятных объяснений на русском"""
+
+    @staticmethod
+    def explain_structure(trend):
+        """Объяснение структуры рынка"""
+        explanations = {
+            "bullish": "📈 Бычий тренд - рынок растет, формируются Higher Highs и Higher Lows",
+            "bearish": "📉 Медвежий тренд - рынок падает, формируются Lower Highs и Lower Lows",
+            "range": "↔️ Боковой диапазон - рынок движется в коридоре, нет четкого направления",
+            "unknown": "❓ Структура неопределенная - недостаточно данных"
+        }
+        return explanations.get(trend, f"Структура: {trend}")
+
+    @staticmethod
+    def explain_liquidity_direction(direction):
+        """Объяснение направления ликвидности"""
+        explanations = {
+            "up": "🟥 Ликвидность НАД ценой - больше стопов покупателей, цена может пойти вверх чтобы их собрать",
+            "down": "🟦 Ликвидность ПОД ценой - больше стопов продавцов, цена может пойти вниз чтобы их собрать",
+            "neutral": "⚪ Ликвидность сбалансирована - нет явного преимущества вверх или вниз"
+        }
+        return explanations.get(direction, f"Направление: {direction}")
+
+    @staticmethod
+    def explain_svd_intent(intent, delta):
+        """Объяснение намерений умных денег"""
+        delta_abs = abs(delta)
+        
+        if intent == "accumulating":
+            if delta_abs > 50:
+                return f"💰 СИЛЬНОЕ НАКОПЛЕНИЕ - крупные игроки активно покупают (дельта: +{delta:.2f})"
+            else:
+                return f"💰 Накопление позиций - крупные игроки постепенно покупают (дельта: +{delta:.2f})"
+        elif intent == "distributing":
+            if delta_abs > 50:
+                return f"📉 СИЛЬНОЕ РАСПРЕДЕЛЕНИЕ - крупные игроки активно продают (дельта: {delta:.2f})"
+            else:
+                return f"📉 Распределение позиций - крупные игроки постепенно продают (дельта: {delta:.2f})"
+        else:
+            return f"❓ Намерения неясны - дельта: {delta:.2f}"
+
+    @staticmethod
+    def explain_rsi(rsi):
+        """Объяснение RSI"""
+        if rsi > 70:
+            return f"🔴 RSI {rsi:.1f} - ПЕРЕКУПЛЕННОСТЬ (риск коррекции вниз)"
+        elif rsi < 30:
+            return f"🟢 RSI {rsi:.1f} - ПЕРЕПРОДАННОСТЬ (возможен отскок вверх)"
+        elif rsi > 50:
+            return f"🟡 RSI {rsi:.1f} - Бычья зона (преобладают покупатели)"
+        else:
+            return f"🟡 RSI {rsi:.1f} - Медвежья зона (преобладают продавцы)"
+
+    @staticmethod
+    def explain_ta_trend(trend, ema_fast, ema_slow, current_price):
+        """Объяснение технического тренда"""
+        if trend == "bullish":
+            ema_status = "выше" if current_price > ema_fast else "ниже"
+            return f"📈 Бычий тренд - цена {ema_status} быстрой EMA ({ema_fast:.2f})"
+        elif trend == "bearish":
+            ema_status = "выше" if current_price > ema_fast else "ниже"
+            return f"📉 Медвежий тренд - цена {ema_status} быстрой EMA ({ema_fast:.2f})"
+        else:
+            return f"⚪ Нейтральный тренд - EMA Fast: {ema_fast:.2f}, EMA Slow: {ema_slow:.2f}"
+
+    @staticmethod
+    def explain_confidence(confidence):
+        """Объяснение уровня уверенности"""
+        if confidence >= 8:
+            return "🔥 ОЧЕНЬ ВЫСОКАЯ уверенность - сигнал очень сильный"
+        elif confidence >= 6:
+            return "✅ ВЫСОКАЯ уверенность - сигнал надежный"
+        elif confidence >= 4:
+            return "⚠️ СРЕДНЯЯ уверенность - сигнал требует осторожности"
+        elif confidence >= 2:
+            return "⚠️ НИЗКАЯ уверенность - сигнал слабый, много неопределенности"
+        else:
+            return "❌ ОЧЕНЬ НИЗКАЯ уверенность - сигнал ненадежный"
+
+    @staticmethod
+    def generate_detailed_explanation(signal_data, structure_data, liquidity_data, svd_data, ta_data, current_price):
+        """Генерация детального объяснения"""
+        signal = signal_data.get('signal', 'WAIT')
+        confidence = signal_data.get('confidence', 0)
+        
+        parts = []
+        
+        # Основной сигнал
+        if signal == "BUY":
+            parts.append("🟢 СИГНАЛ НА ПОКУПКУ")
+        elif signal == "SELL":
+            parts.append("🔴 СИГНАЛ НА ПРОДАЖУ")
+        else:
+            parts.append("🟡 ОЖИДАНИЕ")
+        
+        # Уверенность
+        parts.append(f"\n📊 {RussianExplainer.explain_confidence(confidence)}")
+        
+        # Структура
+        trend = structure_data.get('trend', 'unknown')
+        parts.append(f"\n📈 СТРУКТУРА РЫНКА:")
+        parts.append(f"   {RussianExplainer.explain_structure(trend)}")
+        
+        # Ликвидность
+        liq_dir = liquidity_data.get('direction', {}).get('direction', 'neutral')
+        parts.append(f"\n💧 ЛИКВИДНОСТЬ:")
+        parts.append(f"   {RussianExplainer.explain_liquidity_direction(liq_dir)}")
+        
+        # SVD
+        svd_intent = svd_data.get('intent', 'unclear')
+        delta = svd_data.get('delta', 0)
+        parts.append(f"\n🧠 УМНЫЕ ДЕНЬГИ:")
+        parts.append(f"   {RussianExplainer.explain_svd_intent(svd_intent, delta)}")
+        
+        # TA
+        ta_trend = ta_data.get('trend', 'neutral')
+        ema_fast = ta_data.get('ema_fast', 0)
+        ema_slow = ta_data.get('ema_slow', 0)
+        rsi = ta_data.get('rsi', 0)
+        parts.append(f"\n📉 ТЕХНИЧЕСКИЙ АНАЛИЗ:")
+        parts.append(f"   {RussianExplainer.explain_ta_trend(ta_trend, ema_fast, ema_slow, current_price)}")
+        parts.append(f"   {RussianExplainer.explain_rsi(rsi)}")
+        
+        return "\n".join(parts)
+
