@@ -235,10 +235,13 @@ class DecisionEngine:
             final_confidence += 0.3
         if sweeps.get("sweep_down") and signals.get("signal") == "BUY":
             final_confidence += 0.3
-        # Если свип задел ликвидность (стопы) — небольшой бонус
+        # Если свип задел ликвидность (стопы) — бонус
         if sweeps.get("hit_liquidity_above") and signals.get("signal") == "SELL":
             final_confidence += 0.2
         if sweeps.get("hit_liquidity_below") and signals.get("signal") == "BUY":
+            final_confidence += 0.2
+        # Если был пост-реверсал после свипа в сторону сигнала — еще бонус
+        if sweeps.get("post_reversal") and signals.get("signal") in ("BUY", "SELL"):
             final_confidence += 0.2
 
         return min(max(final_confidence, 0), 10)

@@ -21,7 +21,14 @@ def detect_sweep(df, lookback: int = 5, stop_prices_above=None, stop_prices_belo
         }
     """
     if df is None or len(df) < lookback + 2:
-        return {"sweep_up": False, "sweep_down": False, "hit_liquidity_above": False, "hit_liquidity_below": False}
+        return {
+            "sweep_up": False,
+            "sweep_down": False,
+            "hit_liquidity_above": False,
+            "hit_liquidity_below": False,
+            "post_reversal": False,
+            "post_move": 0
+        }
 
     last = df.iloc[-1]
     prev = df.iloc[-2]
@@ -32,6 +39,8 @@ def detect_sweep(df, lookback: int = 5, stop_prices_above=None, stop_prices_belo
     sweep_down = False
     hit_above = False
     hit_below = False
+    post_reversal = False
+    post_move = 0
 
     # Sweep вверх: текущий хай > max предыдущих, но закрытие ниже max предыдущих
     if last["high"] > highs.max() and last["close"] < highs.max():
@@ -53,5 +62,23 @@ def detect_sweep(df, lookback: int = 5, stop_prices_above=None, stop_prices_belo
                 hit_below = True
                 break
 
-    return {"sweep_up": sweep_up, "sweep_down": sweep_down, "hit_liquidity_above": hit_above, "hit_liquidity_below": hit_below}
+    # Оценка пост-реакции: если было возвращение внутрь диапазона и движение против пробоя
+    if sweep_up:
+        post_move = highs.max() - last["close"]
+        # пост-реверсал, если закрылись существенно ниже прокола
+        if last["close"] < highs.max() * 0.999:
+            post_reversal = True
+    if sweep_down:
+        post_move = last["close"] - lows.min()
+        if last["close"] > lows.min() * 1.001:
+            post_reversal = True
+
+    return {
+        "sweep_up": sweep_up,
+        "sweep_down": sweep_down,
+        "hit_liquidity_above": hit_above,
+        "hit_liquidity_below": hit_below,
+        "post_reversal": post_reversal,
+        "post_move": post_move
+    }
 
