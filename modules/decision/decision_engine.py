@@ -154,6 +154,8 @@ class DecisionEngine:
         svd_phase = signals["svd"].get("phase", "discovery")
         fomo_flag = signals["svd"].get("fomo", False)
         panic_flag = signals["svd"].get("panic", False)
+        strong_fomo = signals["svd"].get("strong_fomo", False)
+        strong_panic = signals["svd"].get("strong_panic", False)
         sweeps = signals["liquidity"].get("sweeps", {"sweep_up": False, "sweep_down": False})
         
         agreement = 0
@@ -223,12 +225,21 @@ class DecisionEngine:
             final_confidence -= 0.2
         if panic_flag:
             final_confidence -= 0.2
+        if strong_fomo:
+            final_confidence -= 0.3
+        if strong_panic:
+            final_confidence -= 0.3
 
         # Реакция на sweeps: свип вверх усиливает SELL, свип вниз усиливает BUY
         if sweeps.get("sweep_up") and signals.get("signal") == "SELL":
             final_confidence += 0.3
         if sweeps.get("sweep_down") and signals.get("signal") == "BUY":
             final_confidence += 0.3
+        # Если свип задел ликвидность (стопы) — небольшой бонус
+        if sweeps.get("hit_liquidity_above") and signals.get("signal") == "SELL":
+            final_confidence += 0.2
+        if sweeps.get("hit_liquidity_below") and signals.get("signal") == "BUY":
+            final_confidence += 0.2
 
         return min(max(final_confidence, 0), 10)
     
@@ -249,6 +260,8 @@ class DecisionEngine:
         sweeps = signals["liquidity"].get("sweeps", {"sweep_up": False, "sweep_down": False})
         fomo_flag = signals["svd"].get("fomo", False)
         panic_flag = signals["svd"].get("panic", False)
+        strong_fomo = signals["svd"].get("strong_fomo", False)
+        strong_panic = signals["svd"].get("strong_panic", False)
         phase = signals["svd"].get("phase", "discovery")
         
         if direction == "BUY":
@@ -303,6 +316,10 @@ class DecisionEngine:
             parts.append("⚠️ FOMO: ускоренный приток покупок")
         if panic_flag:
             parts.append("⚠️ Panic: ускоренный приток продаж")
+        if strong_fomo:
+            parts.append("⚠️ Сильное FOMO: серия покупок с высоким ускорением")
+        if strong_panic:
+            parts.append("⚠️ Сильная паника: серия продаж с высоким ускорением")
 
         # Фаза
         parts.append(f"Фаза: {phase}")

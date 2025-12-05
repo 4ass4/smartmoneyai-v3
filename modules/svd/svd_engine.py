@@ -90,6 +90,8 @@ class SVDEngine:
         # FOMO / Panic прокси из бакетов
         fomo_flag = False
         panic_flag = False
+        strong_fomo = False
+        strong_panic = False
         if bucket_metrics:
             last_delta = bucket_metrics.get("last_bucket_delta", 0)
             last_vel = bucket_metrics.get("last_bucket_velocity", 0)
@@ -102,6 +104,11 @@ class SVDEngine:
             # Panic: серия отрицательных бакетов и скорость выше средней
             if (last_delta < 0 or neg_streak >= 2) and last_vel > max(mean_vel * 1.1, 5):
                 panic_flag = True
+            # Усиленная метка: длинные серии и сильное ускорение
+            if pos_streak >= 3 and last_vel > max(mean_vel * 1.5, 8):
+                strong_fomo = True
+            if neg_streak >= 3 and last_vel > max(mean_vel * 1.5, 8):
+                strong_panic = True
 
         # Определяем фазу (грубая эвристика)
         phase = "discovery"
@@ -125,6 +132,8 @@ class SVDEngine:
             "buckets": bucket_metrics,
             "fomo": fomo_flag,
             "panic": panic_flag,
+            "strong_fomo": strong_fomo,
+            "strong_panic": strong_panic,
             "phase": phase,
             "intent": intent,
             "confidence": score
