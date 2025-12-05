@@ -13,7 +13,7 @@ class DecisionEngine:
         self.config = config
         self.min_confidence = 7.0 if config is None else getattr(config, 'MIN_CONFIDENCE', 7.0)
 
-    def analyze(self, liquidity_data, svd_data, market_structure, ta_data, current_price=None):
+    def analyze(self, liquidity_data, svd_data, market_structure, ta_data, current_price=None, htf_context=None):
         """
         Главный метод принятия решения
         
@@ -33,7 +33,8 @@ class DecisionEngine:
             "svd": svd_data,
             "structure": market_structure,
             "ta": ta_data,
-            "current_price": current_price
+            "current_price": current_price,
+            "htf": htf_context or {}
         }
         
         # Определение направления
@@ -148,9 +149,12 @@ class DecisionEngine:
         svd_intent = signals["svd"].get("intent", "unclear")
         trend = signals["structure"].get("trend", "range")
         ta_trend = signals["ta"].get("trend", "neutral")
+        htf_trend1 = signals.get("htf", {}).get("htf1", "unknown")
+        htf_trend2 = signals.get("htf", {}).get("htf2", "unknown")
         svd_phase = signals["svd"].get("phase", "discovery")
         fomo_flag = signals["svd"].get("fomo", False)
         panic_flag = signals["svd"].get("panic", False)
+        sweeps = signals["liquidity"].get("sweeps", {"sweep_up": False, "sweep_down": False})
         
         agreement = 0
         contradictions = 0
@@ -179,9 +183,18 @@ class DecisionEngine:
         elif (ta_trend == "bullish" and trend == "bearish") or \
              (ta_trend == "bearish" and trend == "bullish"):
             contradictions += 0.5  # Меньший вес для TA
+
+        # HTF bias: если совпадает — бонус, если против — небольшой штраф
+        htf_bonus = 0
+        for htf in [htf_trend1, htf_trend2]:
+            if htf in ("bullish", "bearish"):
+                if htf == trend:
+                    htf_bonus += 0.3
+                elif trend != "range" and htf != trend:
+                    htf_bonus -= 0.3
         
-        # Базовый confidence от согласованности
-        base_confidence = min(agreement * 1.5, 6)
+        # Базовый confidence от согласованности + HTF
+        base_confidence = min(agreement * 1.5, 6) + htf_bonus
         
         # Штраф за противоречия (каждое противоречие снижает confidence на 1.5)
         contradiction_penalty = contradictions * 1.5
@@ -210,6 +223,12 @@ class DecisionEngine:
             final_confidence -= 0.2
         if panic_flag:
             final_confidence -= 0.2
+
+        # Реакция на sweeps: свип вверх усиливает SELL, свип вниз усиливает BUY
+        if sweeps.get("sweep_up") and signals.get("signal") == "SELL":
+            final_confidence += 0.3
+        if sweeps.get("sweep_down") and signals.get("signal") == "BUY":
+            final_confidence += 0.3
 
         return min(max(final_confidence, 0), 10)
     

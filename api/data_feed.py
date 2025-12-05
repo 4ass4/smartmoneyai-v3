@@ -22,6 +22,42 @@ class DataFeed:
         self.symbol = config.get_symbol_for_api() if hasattr(config, 'get_symbol_for_api') else getattr(config, 'SYMBOL', 'BTC-USDT')
         self.timeframe = getattr(config, 'TIMEFRAME', '15m')
 
+    def _get_klines(self, symbol, interval, limit):
+        klines = self.client.get_klines(symbol, interval, limit)
+        if not klines:
+            return pd.DataFrame()
+        data = None
+        if isinstance(klines, dict):
+            if klines.get('code') == 0 and 'data' in klines:
+                data = klines['data']
+            elif 'data' in klines:
+                data = klines['data']
+            else:
+                return pd.DataFrame()
+        elif isinstance(klines, list):
+            data = klines
+        else:
+            return pd.DataFrame()
+        if not data or len(data) == 0:
+            return pd.DataFrame()
+        if isinstance(data[0], dict):
+            df = pd.DataFrame(data).rename(columns={'time': 'timestamp'})
+            df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            df = df.sort_values('timestamp').reset_index(drop=True)
+        else:
+            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df = df.astype({
+            'timestamp': 'int64',
+            'open': 'float64',
+            'high': 'float64',
+            'low': 'float64',
+            'close': 'float64',
+            'volume': 'float64'
+        })
+        return df
+
     async def get_ohlcv(self, limit=None):
         """
         Получение OHLCV данных
@@ -34,56 +70,15 @@ class DataFeed:
         """
         if limit is None:
             limit = getattr(self.config, 'KLINE_LIMIT', 100)
-        klines = self.client.get_klines(self.symbol, self.timeframe, limit)
-        
-        if not klines:
-            return pd.DataFrame()
-        
-        # Обработка формата ответа BingX
-        data = None
-        if isinstance(klines, dict):
-            # BingX возвращает: {"code": 0, "data": [...]}
-            if klines.get('code') == 0 and 'data' in klines:
-                data = klines['data']
-            elif 'data' in klines:
-                data = klines['data']
-            else:
-                return pd.DataFrame()
-        elif isinstance(klines, list):
-            data = klines
-        else:
-            return pd.DataFrame()
-        
-        if not data or len(data) == 0:
-            return pd.DataFrame()
-        
-        # BingX возвращает список словарей: [{"open": "...", "close": "...", "high": "...", "low": "...", "volume": "...", "time": ...}, ...]
-        if isinstance(data[0], dict):
-            # Преобразуем словари в DataFrame
-            df = pd.DataFrame(data)
-            # Переименовываем колонки и преобразуем типы
-            df = df.rename(columns={'time': 'timestamp'})
-            df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
-            df['open'] = pd.to_numeric(df['open'], errors='coerce')
-            df['high'] = pd.to_numeric(df['high'], errors='coerce')
-            df['low'] = pd.to_numeric(df['low'], errors='coerce')
-            df['close'] = pd.to_numeric(df['close'], errors='coerce')
-            df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
-            # Сортируем по timestamp
-            df = df.sort_values('timestamp').reset_index(drop=True)
-        else:
-            # Старый формат (список списков)
-            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df = df.astype({
-            'timestamp': 'int64',
-            'open': 'float64',
-            'high': 'float64',
-            'low': 'float64',
-            'close': 'float64',
-            'volume': 'float64'
-        })
-        
-        return df
+        return self._get_klines(self.symbol, self.timeframe, limit)
+
+    async def get_ohlcv_tf(self, interval: str, limit=None):
+        """
+        OHLCV для другого таймфрейма (HTF)
+        """
+        if limit is None:
+            limit = getattr(self.config, 'HTF_LIMIT', 200)
+        return self._get_klines(self.symbol, interval, limit)
 
     async def get_orderbook(self, limit=20):
         """

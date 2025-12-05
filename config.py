@@ -89,6 +89,13 @@ class Config:
     ENABLE_VOLUME_FILTER: bool = os.getenv("ENABLE_VOLUME_FILTER", "True").lower() == "true"
     
     # ============================================
+    # HIGHER TIMEFRAME (HTF) ДЛЯ BIAS
+    # ============================================
+    HTF_1_INTERVAL: str = os.getenv("HTF_1_INTERVAL", "1h")
+    HTF_2_INTERVAL: str = os.getenv("HTF_2_INTERVAL", "4h")
+    HTF_LIMIT: int = int(os.getenv("HTF_LIMIT", "200"))
+    
+    # ============================================
     # TRADINGVIEW WEBHOOK
     # ============================================
     ENABLE_TRADINGVIEW_WEBHOOK: bool = os.getenv("ENABLE_TRADINGVIEW_WEBHOOK", "False").lower() == "true"

@@ -125,6 +125,11 @@ async def main():
             try:
                 # 1. Market Structure
                 structure_data = market_structure_engine.analyze(market_data["ohlcv"])
+                # HTF bias (1h/4h по умолчанию)
+                htf1_df = await data_feed.get_ohlcv_tf(config.HTF_1_INTERVAL)
+                htf2_df = await data_feed.get_ohlcv_tf(config.HTF_2_INTERVAL)
+                htf1_struct = market_structure_engine.analyze(htf1_df) if not htf1_df.empty else {"trend": "unknown"}
+                htf2_struct = market_structure_engine.analyze(htf2_df) if not htf2_df.empty else {"trend": "unknown"}
                 
                 # 2. Liquidity
                 liquidity_data = liquidity_engine.analyze(market_data["ohlcv"], structure_data)
@@ -138,14 +143,18 @@ async def main():
                 # 4. TA
                 ta_data = ta_engine.analyze(market_data["ohlcv"])
                 
-                # 5. Decision (передаем текущую цену)
+                # 5. Decision (передаем текущую цену и HTF контекст)
                 current_price = market_data["ohlcv"]["close"].iloc[-1]
                 signal = decision_engine.analyze(
                     liquidity_data,
                     svd_data,
                     structure_data,
                     ta_data,
-                    current_price=current_price
+                    current_price=current_price,
+                    htf_context={
+                        "htf1": htf1_struct.get("trend", "unknown"),
+                        "htf2": htf2_struct.get("trend", "unknown"),
+                    }
                 )
                 
                 # Добавляем текущую цену в signals для расчета уровней
