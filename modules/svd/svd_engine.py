@@ -41,7 +41,7 @@ class SVDEngine:
         current_ts = trades[-1].get("timestamp") if trades else None
         prev_price = trades[-2].get("price") if trades and len(trades) > 1 else None
         spoof_wall = detect_spoof_wall(orderbook, current_price) if orderbook and current_price else {"side": None, "price": None, "volume": None, "factor": 1.0}
-        path_cost = compute_path_cost(orderbook, current_price) if orderbook and current_price else {"up": 0.0, "down": 0.0}
+        path_cost = compute_path_cost(orderbook, current_price, depth_levels=20, thin_zones=thin_zones) if orderbook and current_price else {"up": 0.0, "down": 0.0}
         bucket_metrics = bucket_trades(trades, bucket_seconds=5)
 
         # Определяем лучший бид/аск для DOM chasing
