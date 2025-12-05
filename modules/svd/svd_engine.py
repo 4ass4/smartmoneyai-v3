@@ -5,6 +5,8 @@ from .absorption import detect_absorption
 from .aggression import detect_aggression
 from .velocity import detect_trade_velocity
 from .orderbook_imbalance import compute_orderbook_imbalance
+from .orderbook_thin import detect_thin_zones
+from .spoof_detector import detect_spoof_wall
 from .trade_buckets import bucket_trades
 from .svd_score import svd_confidence_score
 
@@ -26,6 +28,10 @@ class SVDEngine:
 
         # Новый блок: дисбаланс стакана (DOM) и краткосрочные бакеты сделок
         dom_imbalance = compute_orderbook_imbalance(orderbook) if orderbook else {"imbalance": 1, "side": "neutral"}
+        thin_zones = detect_thin_zones(orderbook) if orderbook else {"thin_above": None, "thin_below": None}
+        # текущая цена из последней сделки, если есть
+        current_price = trades[-1].get("price") if trades else None
+        spoof_wall = detect_spoof_wall(orderbook, current_price) if orderbook and current_price else {"side": None, "price": None, "volume": None, "factor": 1.0}
         bucket_metrics = bucket_trades(trades, bucket_seconds=5)
         
         score = svd_confidence_score(delta, absorption, aggression, velocity, dom_imbalance, bucket_metrics)
@@ -50,6 +56,8 @@ class SVDEngine:
             "aggression": aggression,
             "velocity": velocity,
             "dom_imbalance": dom_imbalance,
+            "thin_zones": thin_zones,
+            "spoof_wall": spoof_wall,
             "buckets": bucket_metrics,
             "intent": intent,
             "confidence": score
