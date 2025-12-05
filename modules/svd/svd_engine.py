@@ -9,6 +9,7 @@ from .orderbook_thin import detect_thin_zones
 from .spoof_detector import detect_spoof_wall
 from .trade_buckets import bucket_trades
 from .svd_score import svd_confidence_score
+from collections import deque
 
 
 class SVDEngine:
@@ -16,6 +17,7 @@ class SVDEngine:
         # Память для трекинга спуфов и движения лучшего бид/аск
         self._prev_spoof = None  # {"side":..., "price":..., "ts_start":..., "ts_last":...}
         self._prev_best = {"bid": None, "ask": None, "ts": None}
+        self._spoof_events = deque(maxlen=20)  # история подтвержденных спуфов
 
     def analyze(self, trades: list, orderbook: dict):
         """
@@ -36,6 +38,7 @@ class SVDEngine:
         # текущая цена и время из последней сделки, если есть
         current_price = trades[-1].get("price") if trades else None
         current_ts = trades[-1].get("timestamp") if trades else None
+        prev_price = trades[-2].get("price") if trades and len(trades) > 1 else None
         spoof_wall = detect_spoof_wall(orderbook, current_price) if orderbook and current_price else {"side": None, "price": None, "volume": None, "factor": 1.0}
         bucket_metrics = bucket_trades(trades, bucket_seconds=5)
 
@@ -72,6 +75,13 @@ class SVDEngine:
                     time_ok = spoof_duration < 15_000  # <15s жизнь стены
                 if price_move < 0.0015 and time_ok:
                     spoof_confirmed = True
+                    # логируем событие
+                    self._spoof_events.append({
+                        "side": prev.get("side"),
+                        "price": prev.get("price"),
+                        "duration_ms": spoof_duration,
+                        "ts": current_ts
+                    })
         # обновляем память спуфа
         if spoof_wall.get("side"):
             # если стена та же сторона, продлеваем ts_last, ts_start
@@ -103,6 +113,9 @@ class SVDEngine:
         panic_flag = False
         strong_fomo = False
         strong_panic = False
+        price_move_pct = 0
+        if current_price and prev_price and prev_price != 0:
+            price_move_pct = abs(current_price - prev_price) / prev_price * 100
         if bucket_metrics:
             last_delta = bucket_metrics.get("last_bucket_delta", 0)
             last_vel = bucket_metrics.get("last_bucket_velocity", 0)
@@ -119,6 +132,11 @@ class SVDEngine:
             if pos_streak >= 3 and last_vel > max(mean_vel * 1.5, 8):
                 strong_fomo = True
             if neg_streak >= 3 and last_vel > max(mean_vel * 1.5, 8):
+                strong_panic = True
+            # Усиление через волатильность между последними сделками
+            if price_move_pct > 0.25 and fomo_flag:
+                strong_fomo = True
+            if price_move_pct > 0.25 and panic_flag:
                 strong_panic = True
 
         # Определяем фазу (грубая эвристика)
@@ -140,6 +158,7 @@ class SVDEngine:
             "spoof_wall": spoof_wall,
             "spoof_confirmed": spoof_confirmed,
             "spoof_duration_ms": spoof_duration,
+            "spoof_events": list(self._spoof_events),
             "dom_chasing": dom_chasing,
             "buckets": bucket_metrics,
             "fomo": fomo_flag,
