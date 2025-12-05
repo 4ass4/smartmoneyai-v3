@@ -36,9 +36,9 @@ async def main():
     
     # Инициализация компонентов
     config = Config()
-    data_feed = DataFeed(config)
-    notification_manager = NotificationManager(config)
     ws_manager = WebSocketManager(config)
+    data_feed = DataFeed(config, ws_manager=ws_manager)
+    notification_manager = NotificationManager(config)
     
     # Инициализация Telegram бота
     bot_token = config.TELEGRAM_BOT_TOKEN

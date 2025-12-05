@@ -9,8 +9,9 @@ class DataFeed:
     Унифицированный загрузчик данных для модулей
     """
 
-    def __init__(self, config):
+    def __init__(self, config, ws_manager=None):
         self.config = config
+        self.ws_manager = ws_manager
         # Поддержка обоих вариантов названия secret key
         secret_key = getattr(config, 'BINGX_API_SECRET', None) or getattr(config, 'BINGX_SECRET_KEY', None)
         self.client = BingXClient(
@@ -94,6 +95,12 @@ class DataFeed:
         Returns:
             Dict со стаканом в формате для модулей
         """
+        # Сначала пробуем взять из WebSocket, если доступен
+        if self.ws_manager:
+            ob = self.ws_manager.get_orderbook_snapshot()
+            if ob:
+                return ob
+
         result = self.client.get_orderbook(self.symbol, limit)
         
         if not result:
@@ -130,6 +137,12 @@ class DataFeed:
         Returns:
             List сделок в формате для SVD модуля
         """
+        # Сначала пробуем взять из WebSocket, если доступен
+        if self.ws_manager:
+            trades = self.ws_manager.get_trades_snapshot()
+            if trades:
+                return trades
+
         result = self.client.get_trades(self.symbol, limit)
         
         if not result:

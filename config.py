@@ -114,6 +114,14 @@ class Config:
     LIQUIDITY_LOOKBACK: int = 100  # свечей для анализа ликвидности
     SVD_WINDOW: int = 20  # окно для SVD анализа
     MIN_CONFIDENCE: float = 7.0  # минимальный confidence для сигнала
+
+    # ============================================
+    # WEBSOCKET НАСТРОЙКИ
+    # ============================================
+    WS_ENABLED: bool = os.getenv("WS_ENABLED", "True").lower() == "true"
+    WS_BASE_URL: str = os.getenv("WS_BASE_URL", "wss://open-api-swap.bingx.com/swap-market")
+    WS_DEPTH_LEVEL: int = int(os.getenv("WS_DEPTH_LEVEL", "20"))
+    WS_TRADES_BUFFER: int = int(os.getenv("WS_TRADES_BUFFER", "1000"))
     
     def __init__(self):
         """Инициализация и создание необходимых директорий"""
