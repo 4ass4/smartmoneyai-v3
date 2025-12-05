@@ -220,9 +220,8 @@ class BotHandlers:
             message_parts.append("🧠 ДЕЙСТВИЯ УМНЫХ ДЕНЕГ:")
             smart_money_text = deep_report["smart_money"]
             if smart_money_text:
-                # Разбиваем на части если слишком длинное
                 smart_money_lines = smart_money_text.split('\n')
-                for line in smart_money_lines[:10]:  # Ограничиваем длину
+                for line in smart_money_lines[:18]:  # немного больше подробностей
                     if line.strip():
                         message_parts.append(line)
             
