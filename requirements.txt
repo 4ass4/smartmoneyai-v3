@@ -10,8 +10,7 @@ pandas>=2.1.0
 numpy>=1.24.0
 
 # Technical Analysis
-ta-lib>=0.4.28
-pandas-ta>=0.3.14b0
+# ta-lib и pandas-ta не используются - все индикаторы реализованы самостоятельно
 
 # Telegram Bot
 python-telegram-bot>=20.7
@@ -19,7 +18,7 @@ python-telegram-bot>=20.7
 # Utilities
 python-dotenv>=1.0.0
 aiohttp>=3.9.0
-asyncio>=3.4.3
+# asyncio - встроенный модуль Python, не требует установки
 
 # Logging
 colorlog>=6.8.0
