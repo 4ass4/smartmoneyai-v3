@@ -165,7 +165,11 @@ class WebSocketManager:
             except Exception as e:
                 wait = backoff[min(idx, len(backoff) - 1)]
                 idx += 1
-                logger.warning(f"WS trades reconnect in {wait}s after error: {e}")
+                msg = str(e)
+                if "no close frame received or sent" in msg:
+                    logger.info(f"WS trades reconnect in {wait}s after graceful close: {e}")
+                else:
+                    logger.warning(f"WS trades reconnect in {wait}s after error: {e}")
                 await asyncio.sleep(wait)
 
     async def _run_depth(self):
@@ -210,6 +214,10 @@ class WebSocketManager:
             except Exception as e:
                 wait = backoff[min(idx, len(backoff) - 1)]
                 idx += 1
-                logger.warning(f"WS depth reconnect in {wait}s after error: {e}")
+                msg = str(e)
+                if "no close frame received or sent" in msg:
+                    logger.info(f"WS depth reconnect in {wait}s after graceful close: {e}")
+                else:
+                    logger.warning(f"WS depth reconnect in {wait}s after error: {e}")
                 await asyncio.sleep(wait)
 
