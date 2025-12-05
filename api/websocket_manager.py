@@ -4,6 +4,7 @@ import asyncio
 import websockets
 import json
 import logging
+import zlib
 from collections import deque
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,33 @@ class WebSocketManager:
         """Возвращает последний стакан"""
         return self.orderbook.copy() if self.orderbook else {}
 
+    # ------------------ Вспомогательные ------------------ #
+    def _decode_message(self, raw):
+        """
+        Декодирует сообщение WS. BingX может слать gzip-сжатые бинарные фреймы.
+        """
+        if raw is None:
+            return None
+        if isinstance(raw, str):
+            try:
+                return json.loads(raw)
+            except Exception:
+                return None
+        if isinstance(raw, bytes):
+            # Пытаемся распаковать gzip/deflate
+            for wbits in (16 + zlib.MAX_WBITS, zlib.MAX_WBITS):
+                try:
+                    text = zlib.decompress(raw, wbits).decode("utf-8")
+                    return json.loads(text)
+                except Exception:
+                    continue
+            # fallback: прямое декодирование
+            try:
+                return json.loads(raw.decode("utf-8"))
+            except Exception:
+                return None
+        return None
+
     # ------------------ Внутренние потоки ------------------ #
     async def _run_trades(self):
         """Подписка на trades"""
@@ -86,11 +114,9 @@ class WebSocketManager:
                     await ws.send(json.dumps(sub_msg))
                     idx = 0
                     async for raw in ws:
-                        if raw is None:
+                        msg = self._decode_message(raw)
+                        if not msg:
                             continue
-                        if isinstance(raw, bytes):
-                            raw = raw.decode("utf-8")
-                        msg = json.loads(raw)
                         # Ping/Pong
                         if isinstance(msg, dict) and "ping" in msg:
                             await ws.send(json.dumps({"pong": msg["ping"]}))
@@ -159,11 +185,9 @@ class WebSocketManager:
                     await ws.send(json.dumps(sub_msg))
                     idx = 0
                     async for raw in ws:
-                        if raw is None:
+                        msg = self._decode_message(raw)
+                        if not msg:
                             continue
-                        if isinstance(raw, bytes):
-                            raw = raw.decode("utf-8")
-                        msg = json.loads(raw)
                         if isinstance(msg, dict) and "ping" in msg:
                             await ws.send(json.dumps({"pong": msg["ping"]}))
                             continue
