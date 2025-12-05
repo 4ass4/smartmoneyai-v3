@@ -44,6 +44,20 @@ class DecisionEngine:
         # Расчет confidence
         confidence = self._calculate_confidence(signals)
         
+        # Опциональный фильтр: только фаза execution (меньше шумов, выше "уверенность" в смысле действия китов)
+        svd_phase = signals["svd"].get("phase", "discovery")
+        if getattr(self.config, "EXECUTION_ONLY_SIGNALS", False):
+            if svd_phase != "execution" and confidence < 6:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Фильтр EXECUTION_ONLY: фаза {svd_phase}, confidence {confidence:.1f} < 6 — возвращаем WAIT")
+                return {
+                    "signal": "WAIT",
+                    "confidence": 0,
+                    "reason": "Ожидаем фазу execution для подтверждения действий крупных игроков",
+                    "explanation": "Недостаточно признаков фазы execution, сигнал пропущен"
+                }
+
         # Применение фильтров риска
         filtered = apply_risk_filters(signals, confidence)
         

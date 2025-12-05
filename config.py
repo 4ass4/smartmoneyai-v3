@@ -87,6 +87,8 @@ class Config:
     ENABLE_MACD_FILTER: bool = os.getenv("ENABLE_MACD_FILTER", "True").lower() == "true"
     ENABLE_RSI_FILTER: bool = os.getenv("ENABLE_RSI_FILTER", "True").lower() == "true"
     ENABLE_VOLUME_FILTER: bool = os.getenv("ENABLE_VOLUME_FILTER", "True").lower() == "true"
+    # Требовать фазу execution для сигналов (усиление уверенности, меньше шумов)
+    EXECUTION_ONLY_SIGNALS: bool = os.getenv("EXECUTION_ONLY_SIGNALS", "False").lower() == "true"
     
     # ============================================
     # HIGHER TIMEFRAME (HTF) ДЛЯ BIAS
