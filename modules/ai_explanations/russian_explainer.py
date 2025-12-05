@@ -180,6 +180,19 @@ class RussianExplainer:
             parts.append("\n🎭 МАНИПУЛЯЦИИ/ФАКТОРЫ ПОТОКА:")
             for m in manip_parts:
                 parts.append(f"   • {m}")
+            # Краткие пояснения по терминам, чтобы не оставлять сухие факты
+            explanations = []
+            if dom.get("side"):
+                explanations.append("DOM: дисбаланс лимитных ордеров — куда перевешивают стенки (bid = поддержка, ask = давление).")
+            if thin.get("thin_above") or thin.get("thin_below"):
+                explanations.append("Тонкая ликвидность: мало лимиток — цена может резко проскочить в эту сторону.")
+            if spoof.get("side") or spoof_confirmed:
+                explanations.append("Спуф-стенка: крупный лимитный ордер, который может быть фейком для манипуляции потоком.")
+            explanations.append("Фаза: market-flow стадия по SVD (manipulation/distribution/execution/discovery).")
+            explanations.append("HTF ликвидность: смещение ликвидности на старших ТФ (1ч/4ч), если есть перекос.")
+            parts.append("   Пояснения:")
+            for e in explanations:
+                parts.append(f"   - {e}")
         
         # TA
         ta_trend = ta_data.get('trend', 'neutral')
