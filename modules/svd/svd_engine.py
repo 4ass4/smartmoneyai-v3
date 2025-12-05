@@ -13,8 +13,9 @@ from .svd_score import svd_confidence_score
 
 class SVDEngine:
     def __init__(self):
-        # Память для простого трекинга спуфов между вызовами
+        # Память для трекинга спуфов и движения лучшего бид/аск
         self._prev_spoof = None
+        self._prev_best = {"bid": None, "ask": None, "ts": None}
 
     def analyze(self, trades: list, orderbook: dict):
         """
@@ -32,10 +33,15 @@ class SVDEngine:
         # Новый блок: дисбаланс стакана (DOM) и краткосрочные бакеты сделок
         dom_imbalance = compute_orderbook_imbalance(orderbook) if orderbook else {"imbalance": 1, "side": "neutral"}
         thin_zones = detect_thin_zones(orderbook) if orderbook else {"thin_above": None, "thin_below": None}
-        # текущая цена из последней сделки, если есть
+        # текущая цена и время из последней сделки, если есть
         current_price = trades[-1].get("price") if trades else None
+        current_ts = trades[-1].get("timestamp") if trades else None
         spoof_wall = detect_spoof_wall(orderbook, current_price) if orderbook and current_price else {"side": None, "price": None, "volume": None, "factor": 1.0}
         bucket_metrics = bucket_trades(trades, bucket_seconds=5)
+
+        # Определяем лучший бид/аск для DOM chasing
+        best_bid = orderbook["bids"][0][0] if orderbook and orderbook.get("bids") else None
+        best_ask = orderbook["asks"][0][0] if orderbook and orderbook.get("asks") else None
         
         score = svd_confidence_score(delta, absorption, aggression, velocity, dom_imbalance, bucket_metrics)
 
@@ -59,10 +65,27 @@ class SVDEngine:
             prev = self._prev_spoof
             if (not spoof_wall.get("side")) and current_price:
                 price_move = abs(current_price - prev.get("price", current_price)) / current_price
-                if price_move < 0.0015:  # <0.15% движения — вероятный спуф
+                # ограничиваем по времени (если есть метка времени trades)
+                time_ok = True
+                if current_ts and prev.get("ts"):
+                    time_ok = (current_ts - prev["ts"]) < 10_000  # 10 секунд
+                if price_move < 0.0015 and time_ok:  # <0.15% движения — вероятный спуф
                     spoof_confirmed = True
-        # обновляем память
-        self._prev_spoof = spoof_wall if spoof_wall.get("side") else None
+        # обновляем память спуфа
+        if spoof_wall.get("side"):
+            self._prev_spoof = {"side": spoof_wall["side"], "price": spoof_wall.get("price"), "ts": current_ts}
+        else:
+            self._prev_spoof = None
+
+        # DOM chasing: лучшая bid/ask двигается вслед за ценой
+        dom_chasing = {"bid_chasing": False, "ask_chasing": False}
+        if best_bid and best_ask:
+            if self._prev_best["bid"] is not None and best_bid > self._prev_best["bid"]:
+                dom_chasing["bid_chasing"] = True
+            if self._prev_best["ask"] is not None and best_ask < self._prev_best["ask"]:
+                dom_chasing["ask_chasing"] = True
+        # обновляем память лучших цен
+        self._prev_best = {"bid": best_bid, "ask": best_ask, "ts": current_ts}
 
         # FOMO / Panic прокси из бакетов
         fomo_flag = False
@@ -96,6 +119,7 @@ class SVDEngine:
             "thin_zones": thin_zones,
             "spoof_wall": spoof_wall,
             "spoof_confirmed": spoof_confirmed,
+            "dom_chasing": dom_chasing,
             "buckets": bucket_metrics,
             "fomo": fomo_flag,
             "panic": panic_flag,

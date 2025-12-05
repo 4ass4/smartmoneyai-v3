@@ -245,6 +245,7 @@ class DecisionEngine:
         thin = signals["svd"].get("thin_zones", {})
         spoof = signals["svd"].get("spoof_wall", {})
         spoof_confirmed = signals["svd"].get("spoof_confirmed", False)
+        dom_chasing = signals["svd"].get("dom_chasing", {"bid_chasing": False, "ask_chasing": False})
         sweeps = signals["liquidity"].get("sweeps", {"sweep_up": False, "sweep_down": False})
         fomo_flag = signals["svd"].get("fomo", False)
         panic_flag = signals["svd"].get("panic", False)
@@ -267,6 +268,8 @@ class DecisionEngine:
                 parts.append("сверху тонкая ликвидность — риск ускоренного роста")
             if spoof.get("side") == "bid" or spoof_confirmed:
                 parts.append("возможен спуф на покупку (осторожно с ложной поддержкой)")
+            if dom_chasing.get("bid_chasing"):
+                parts.append("bids преследуют цену (chasing)")
         elif direction == "SELL":
             parts.append("Сигнал на продажу")
             if liq_dir == "down":
@@ -284,6 +287,8 @@ class DecisionEngine:
                 parts.append("снизу тонкая ликвидность — риск ускоренного падения")
             if spoof.get("side") == "ask" or spoof_confirmed:
                 parts.append("возможен спуф на продажу (осторожно с ложным давлением)")
+            if dom_chasing.get("ask_chasing"):
+                parts.append("asks преследуют цену (chasing)")
         else:
             return "Недостаточно сигналов для принятия решения. Рекомендуется ожидание."
 
