@@ -84,6 +84,8 @@ class DeepMarketAnalyzer:
             price = swept.get("price", 0)
             direction = swept.get("direction", "")
             count = swept.get("count", 1)
+            candles_ago = swept.get("candles_ago")
+            reason = swept.get("reason", "")
             
             # Определяем как работает swept уровень теперь
             if price < current_price:
@@ -93,13 +95,20 @@ class DeepMarketAnalyzer:
                 # Swept вверх → теперь это resistance
                 role = "resistance"
             
-            analysis["swept_levels"].append({
+            swept_info = {
                 "price": price,
                 "direction": direction,
                 "count": count,
                 "role": role,
                 "distance_pct": abs((price - current_price) / current_price) * 100
-            })
+            }
+            
+            if candles_ago:
+                swept_info["candles_ago"] = candles_ago
+            if reason:
+                swept_info["reason"] = reason
+            
+            analysis["swept_levels"].append(swept_info)
 
         return analysis
 

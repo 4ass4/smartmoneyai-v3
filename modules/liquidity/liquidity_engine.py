@@ -2,9 +2,12 @@ from .stop_clusters import detect_stop_clusters
 from .swing_liquidity import detect_swing_liquidity
 from .ath_atl import detect_ath_atl_liquidity
 from .liquidity_direction import detect_liquidity_direction
-from .sweep_detector import detect_sweep
+from .sweep_detector import detect_sweep, detect_historical_sweeps
 from .volume_profile import calculate_volume_profile, get_position_relative_to_value_area, get_poc_significance
 from .swept_tracker import SweptLevelsTracker
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class LiquidityEngine:
@@ -22,6 +25,10 @@ class LiquidityEngine:
         stop_clusters = detect_stop_clusters(df)
         swing_levels = detect_swing_liquidity(market_structure)
         ath_atl = detect_ath_atl_liquidity(df)
+        
+        # Получаем текущую цену
+        current_price = df['close'].iloc[-1] if not df.empty else None
+        
         # Список стопов выше/ниже для свип-детектора
         stops_above = [c["price"] for c in stop_clusters if c.get("type") == "buy_stops"]
         stops_below = [c["price"] for c in stop_clusters if c.get("type") == "sell_stops"]
@@ -36,6 +43,30 @@ class LiquidityEngine:
                     reason="sweep_with_reversal"
                 )
         
+        # НОВОЕ: Обнаруживаем исторические sweeps swing levels
+        swing_highs = market_structure.get("swings", {}).get("highs", [])
+        swing_lows = market_structure.get("swings", {}).get("lows", [])
+        
+        if current_price and len(df) >= 20:
+            historical_sweeps = detect_historical_sweeps(
+                df, 
+                swing_highs, 
+                swing_lows, 
+                current_price,
+                lookback_candles=100
+            )
+            
+            # Помечаем исторические sweeps в tracker
+            for hist_sweep in historical_sweeps:
+                self.swept_tracker.mark_as_swept(
+                    hist_sweep["price"],
+                    hist_sweep["direction"],
+                    reason=f"historical_sweep",
+                    candles_ago=hist_sweep["candles_ago"]
+                )
+                logger.info(f"🎯 Исторический sweep обнаружен: ${hist_sweep['price']:.2f} "
+                           f"({hist_sweep['direction']}, {hist_sweep['candles_ago']} свечей назад)")
+        
         # Фильтруем swept уровни из stop_clusters и swing_liquidity
         stop_clusters = self.swept_tracker.filter_swept_levels(stop_clusters, tolerance_pct=0.5)
         swing_levels = self.swept_tracker.filter_swept_levels(swing_levels, tolerance_pct=0.5)
@@ -44,7 +75,6 @@ class LiquidityEngine:
         
         # Volume Profile - распределение объёмов по ценам
         volume_profile = calculate_volume_profile(df, num_bins=50)
-        current_price = df['close'].iloc[-1] if not df.empty else None
         
         # Положение относительно Value Area
         va_position = get_position_relative_to_value_area(current_price, volume_profile) if current_price else "unknown"

@@ -21,14 +21,15 @@ class SweptLevelsTracker:
         self.swept_levels = []  # [{price, direction, timestamp, reason}]
         self.expiry_seconds = expiry_hours * 3600
     
-    def mark_as_swept(self, price, direction, reason="sweep"):
+    def mark_as_swept(self, price, direction, reason="sweep", candles_ago=None):
         """
         Помечает уровень как swept (отработанный)
         
         Args:
             price: цена уровня
             direction: "up" (swept вверх) или "down" (swept вниз)
-            reason: причина (sweep, liquidation, breakout)
+            reason: причина (sweep, liquidation, breakout, historical_sweep_...)
+            candles_ago: сколько свечей назад был sweep (для исторических sweeps)
         """
         timestamp = time.time()
         
@@ -38,16 +39,23 @@ class SweptLevelsTracker:
                 # Обновляем timestamp (уровень swept повторно)
                 level["timestamp"] = timestamp
                 level["count"] = level.get("count", 1) + 1
+                if candles_ago and "candles_ago" not in level:
+                    level["candles_ago"] = candles_ago
                 return
         
         # Добавляем новый swept уровень
-        self.swept_levels.append({
+        swept_level = {
             "price": price,
             "direction": direction,
             "timestamp": timestamp,
             "reason": reason,
             "count": 1
-        })
+        }
+        
+        if candles_ago:
+            swept_level["candles_ago"] = candles_ago
+        
+        self.swept_levels.append(swept_level)
     
     def is_swept(self, price, tolerance_pct=0.5):
         """

@@ -1,4 +1,4 @@
-def detect_sweep(df, lookback: int = 5, stop_prices_above=None, stop_prices_below=None):
+def detect_sweep(df, lookback: int = 50, stop_prices_above=None, stop_prices_below=None):
     """
     Обнаружение ликвидити-свипа на последних свечах:
       - sweep_up: прокол недавних хайев с возвратом
@@ -6,7 +6,7 @@ def detect_sweep(df, lookback: int = 5, stop_prices_above=None, stop_prices_belo
 
     Args:
         df: OHLCV DataFrame
-        lookback: сколько предыдущих свечей брать для хай/лоу
+        lookback: сколько предыдущих свечей брать для хай/лоу (default: 50 для истории)
 
     Дополнительно можно передать уровни стопов/ликвидности:
         stop_prices_above: список цен стопов выше (buy stops)
@@ -17,7 +17,9 @@ def detect_sweep(df, lookback: int = 5, stop_prices_above=None, stop_prices_belo
             "sweep_up": bool,
             "sweep_down": bool,
             "hit_liquidity_above": bool,
-            "hit_liquidity_below": bool
+            "hit_liquidity_below": bool,
+            "post_reversal": bool,
+            "swept_prices": list
         }
     """
     if df is None or len(df) < lookback + 2:
@@ -97,4 +99,119 @@ def detect_sweep(df, lookback: int = 5, stop_prices_above=None, stop_prices_belo
         "post_move": post_move,
         "swept_prices": swept_prices  # Список swept уровней для инвалидации
     }
+
+
+def detect_historical_sweeps(df, swing_highs, swing_lows, current_price, lookback_candles=100):
+    """
+    Обнаружение исторических sweeps swing levels:
+    - Swing level был пробит ценой
+    - Цена вернулась обратно (reversal)
+    - Цена не возвращалась к этому уровню длительное время
+    
+    Args:
+        df: OHLCV DataFrame
+        swing_highs: список swing highs [{price, index}]
+        swing_lows: список swing lows [{price, index}]
+        current_price: текущая цена
+        lookback_candles: сколько свечей анализировать (default: 100)
+    
+    Returns:
+        list of swept swing levels [{price, direction, swept_at_index, recovery_confirmed}]
+    """
+    historical_sweeps = []
+    
+    if df is None or len(df) < 10:
+        return historical_sweeps
+    
+    # Ограничиваем анализ последними N свечами
+    start_idx = max(0, len(df) - lookback_candles)
+    df_slice = df.iloc[start_idx:]
+    
+    # Анализируем swing lows (проверяем sweep вниз)
+    for swing in swing_lows:
+        swing_price = swing.get("price")
+        swing_idx = swing.get("index", 0)
+        
+        if swing_price is None or swing_price >= current_price:
+            continue  # Интересуют только уровни ниже текущей цены
+        
+        # Ищем свечи после swing, которые пробили его вниз
+        swept = False
+        swept_idx = None
+        recovery_confirmed = False
+        
+        for i in range(swing_idx + 1, len(df)):
+            candle = df.iloc[i]
+            
+            # Пробой вниз: low пробил swing_price
+            if candle["low"] < swing_price and not swept:
+                swept = True
+                swept_idx = i
+            
+            # Восстановление: close вернулся выше swing_price
+            if swept and candle["close"] > swing_price * 1.002:  # +0.2% подтверждение
+                recovery_confirmed = True
+                
+                # Проверяем, не возвращались ли к этому уровню после
+                no_retest = True
+                for j in range(i + 5, len(df)):  # Минимум 5 свечей без ретеста
+                    if abs(df.iloc[j]["close"] - swing_price) / swing_price < 0.005:  # < 0.5%
+                        no_retest = False
+                        break
+                
+                if no_retest:
+                    historical_sweeps.append({
+                        "price": swing_price,
+                        "direction": "down",
+                        "swept_at_index": swept_idx,
+                        "recovery_confirmed": True,
+                        "type": "swing_low",
+                        "candles_ago": len(df) - swept_idx
+                    })
+                break
+    
+    # Анализируем swing highs (проверяем sweep вверх)
+    for swing in swing_highs:
+        swing_price = swing.get("price")
+        swing_idx = swing.get("index", 0)
+        
+        if swing_price is None or swing_price <= current_price:
+            continue  # Интересуют только уровни выше текущей цены
+        
+        # Ищем свечи после swing, которые пробили его вверх
+        swept = False
+        swept_idx = None
+        recovery_confirmed = False
+        
+        for i in range(swing_idx + 1, len(df)):
+            candle = df.iloc[i]
+            
+            # Пробой вверх: high пробил swing_price
+            if candle["high"] > swing_price and not swept:
+                swept = True
+                swept_idx = i
+            
+            # Восстановление: close вернулся ниже swing_price
+            if swept and candle["close"] < swing_price * 0.998:  # -0.2% подтверждение
+                recovery_confirmed = True
+                
+                # Проверяем, не возвращались ли к этому уровню после
+                no_retest = True
+                for j in range(i + 5, len(df)):  # Минимум 5 свечей без ретеста
+                    if abs(df.iloc[j]["close"] - swing_price) / swing_price < 0.005:  # < 0.5%
+                        no_retest = False
+                        break
+                
+                if no_retest:
+                    historical_sweeps.append({
+                        "price": swing_price,
+                        "direction": "up",
+                        "swept_at_index": swept_idx,
+                        "recovery_confirmed": True,
+                        "type": "swing_high",
+                        "candles_ago": len(df) - swept_idx
+                    })
+                break
+    
+    return historical_sweeps
 

@@ -203,12 +203,23 @@ class BotHandlers:
                     role = swept.get("role", "")
                     count = swept.get("count", 1)
                     distance = swept.get("distance_pct", 0)
+                    candles_ago = swept.get("candles_ago")
                     
                     role_emoji = "🛡️" if role == "support" else "🚧"
                     direction_text = "sweep вниз" if swept.get("direction") == "down" else "sweep вверх"
                     
+                    # Время swept
+                    time_info = ""
+                    if candles_ago:
+                        if candles_ago < 10:
+                            time_info = f", {candles_ago} свечей назад (недавно)"
+                        elif candles_ago < 50:
+                            time_info = f", {candles_ago} свечей назад"
+                        else:
+                            time_info = f", {candles_ago} свечей назад (исторический)"
+                    
                     message_parts.append(f"{role_emoji} ${price:.2f} ({distance:.2f}%) - {role}")
-                    message_parts.append(f"   {direction_text}, swept {count}x - стопы собраны, теперь зона интереса")
+                    message_parts.append(f"   {direction_text}, swept {count}x{time_info} - стопы собраны")
             
             message_parts.append("")
             
