@@ -3,6 +3,7 @@
 from .risk_filters import apply_risk_filters
 from .conflict_detector import ConflictDetector
 from modules.trap.trap_engine import TrapEngine
+from modules.behavior.behavior_engine import BehaviorEngine
 
 
 class DecisionEngine:
@@ -16,6 +17,7 @@ class DecisionEngine:
         self.min_confidence = 7.0 if config is None else getattr(config, 'MIN_CONFIDENCE', 7.0)
         self.conflict_detector = ConflictDetector(config)
         self.trap_engine = TrapEngine(config)
+        self.behavior_engine = BehaviorEngine(config)
 
     def analyze(self, liquidity_data, svd_data, market_structure, ta_data, current_price=None, htf_context=None, htf_liquidity=None, data_quality=None):
         """
@@ -116,6 +118,14 @@ class DecisionEngine:
         )
         signals["trap"] = trap_result
         
+        # Behavior Analysis - поведение толпы vs китов
+        behavior_result = self.behavior_engine.analyze(
+            signals["svd"],
+            trap_result,
+            signals["liquidity"]
+        )
+        signals["behavior"] = behavior_result
+        
         # Применяем корректировку сигнала на основе trap detection
         trap_adjustment = self.trap_engine.get_trap_signal_adjustment(trap_result, direction)
         if trap_adjustment["adjusted_signal"] != direction:
@@ -126,6 +136,13 @@ class DecisionEngine:
         
         # Корректируем confidence на основе trap
         confidence += trap_adjustment["confidence_adjustment"]
+        
+        # Дополнительная корректировка confidence на основе behavior
+        if behavior_result["crowd_trapped"]:
+            confidence += 0.5  # Trap усиливает уверенность в развороте
+        if behavior_result["crowd_whale_divergence"] and not behavior_result["crowd_trapped"]:
+            confidence -= 0.3  # Divergence без trap — предупреждающий сигнал
+        
         confidence = min(max(confidence, 0), 10)
         
         # Генерация объяснения
@@ -148,7 +165,8 @@ class DecisionEngine:
             },
             "levels": levels,
             "conflicts": conflict_result,
-            "trap": trap_result
+            "trap": trap_result,
+            "behavior": behavior_result
         }
     
     def _determine_direction(self, signals):
