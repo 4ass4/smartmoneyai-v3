@@ -20,16 +20,24 @@ class SVDEngine:
         self._prev_best = {"bid": None, "ask": None, "ts": None}
         self._spoof_events = deque(maxlen=20)  # история подтвержденных спуфов
 
-    def analyze(self, trades: list, orderbook: dict):
+    def analyze(self, trades: list, orderbook: dict, atr_pct=None):
         """
         Главный метод SVD анализа.
         Вход:
             trades  — список последних сделок
             orderbook — стакан (bids/asks)
+            atr_pct — ATR в процентах для нормировки (optional)
         """
+        from modules.utils.normalize import normalize_delta_on_atr, get_absorption_threshold, normalize_path_cost_on_atr
 
         delta = compute_delta(trades)
-        absorption = detect_absorption(trades, orderbook)
+        # Нормировка дельты на волатильность
+        if atr_pct:
+            delta_normalized = normalize_delta_on_atr(delta, atr_pct)
+        else:
+            delta_normalized = delta
+        
+        absorption = detect_absorption(trades, orderbook, atr_pct=atr_pct)
         aggression = detect_aggression(trades)
         velocity = detect_trade_velocity(trades)
 
@@ -141,6 +149,12 @@ class SVDEngine:
             if price_move_pct > 0.25 and panic_flag:
                 strong_panic = True
 
+        # Нормировка path_cost на ATR
+        if atr_pct:
+            path_cost_normalized = normalize_path_cost_on_atr(path_cost.get("up", 0), path_cost.get("down", 0), atr_pct)
+        else:
+            path_cost_normalized = path_cost
+        
         # Определяем фазу (грубая эвристика)
         phase = "discovery"
         if spoof_confirmed or spoof_wall.get("side"):
@@ -152,6 +166,7 @@ class SVDEngine:
 
         return {
             "delta": delta,
+            "delta_normalized": delta_normalized,  # Нормированная дельта
             "absorption": absorption,
             "aggression": aggression,
             "velocity": velocity,
@@ -164,12 +179,14 @@ class SVDEngine:
             "dom_chasing": dom_chasing,
             "buckets": bucket_metrics,
             "path_cost": path_cost,
+            "path_cost_normalized": path_cost_normalized,  # Нормированный path cost
             "fomo": fomo_flag,
             "panic": panic_flag,
             "strong_fomo": strong_fomo,
             "strong_panic": strong_panic,
             "phase": phase,
             "intent": intent,
-            "confidence": score
+            "confidence": score,
+            "atr_pct": atr_pct  # Для справки
         }
 

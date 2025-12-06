@@ -156,17 +156,18 @@ async def main():
                 htf1_liq = liquidity_engine.analyze(htf1_df, htf1_struct) if not htf1_df.empty else {}
                 htf2_liq = liquidity_engine.analyze(htf2_df, htf2_struct) if not htf2_df.empty else {}
                 
-                # 2. Liquidity
+                # 2. TA (сначала, чтобы получить ATR для нормировки)
+                ta_data = ta_engine.analyze(market_data["ohlcv"])
+                atr_pct = ta_data.get("atr_pct", None)
+                
+                # 3. Liquidity
                 liquidity_data = liquidity_engine.analyze(market_data["ohlcv"], structure_data)
                 
-                # 3. SVD (требует trades и orderbook)
+                # 4. SVD (требует trades, orderbook и ATR для нормировки)
                 if market_data.get("trades") and market_data.get("orderbook"):
-                    svd_data = svd_engine.analyze(market_data["trades"], market_data["orderbook"])
+                    svd_data = svd_engine.analyze(market_data["trades"], market_data["orderbook"], atr_pct=atr_pct)
                 else:
                     svd_data = {"intent": "unclear", "confidence": 0}
-                
-                # 4. TA
-                ta_data = ta_engine.analyze(market_data["ohlcv"])
                 
                 # 5. Decision (передаем текущую цену, HTF контекст и качество данных)
                 current_price = market_data["ohlcv"]["close"].iloc[-1]

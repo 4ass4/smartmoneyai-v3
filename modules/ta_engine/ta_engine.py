@@ -3,6 +3,7 @@
 from .ema import calculate_ema
 from .rsi import calculate_rsi
 from .patterns import detect_patterns
+from .atr import calculate_atr, calculate_atr_pct
 
 
 class TAEngine:
@@ -31,6 +32,10 @@ class TAEngine:
         # RSI
         rsi = calculate_rsi(df, period=14)
         
+        # ATR (волатильность)
+        atr = calculate_atr(df, period=14)
+        atr_pct = calculate_atr_pct(df, period=14)
+        
         # Паттерны
         patterns = detect_patterns(df)
         
@@ -50,6 +55,8 @@ class TAEngine:
             "trend": trend,
             "patterns": patterns,
             "overbought": rsi.iloc[-1] > 70,
-            "oversold": rsi.iloc[-1] < 30
+            "oversold": rsi.iloc[-1] < 30,
+            "atr": atr.iloc[-1],
+            "atr_pct": atr_pct.iloc[-1]  # В процентах от цены
         }
 
