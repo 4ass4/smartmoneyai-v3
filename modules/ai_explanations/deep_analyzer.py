@@ -82,6 +82,7 @@ class DeepMarketAnalyzer:
     def generate_price_movement_forecast(self, liquidity_data, structure_data, svd_data, current_price, liquidity_analysis):
         """
         Генерация прогноза движения цены к ликвидности
+        УЧИТЫВАЕТ: действия китов (SVD intent), фазу manipulation, ловушки
         """
         forecast = {
             "short_term": {},
@@ -89,50 +90,174 @@ class DeepMarketAnalyzer:
             "scenarios": []
         }
 
-        direction = liquidity_data.get("direction", {}).get("direction", "neutral")
+        liq_direction = liquidity_data.get("direction", {}).get("direction", "neutral")
+        svd_intent = svd_data.get("intent", "unclear")
+        phase = svd_data.get("phase", "discovery")
+        trend = structure_data.get("trend", "range")
+        
         nearest_above = liquidity_analysis.get("nearest_targets", {}).get("above")
         nearest_below = liquidity_analysis.get("nearest_targets", {}).get("below")
-
-        # Краткосрочный прогноз (ближайшие уровни)
-        if direction == "up" and nearest_above:
-            forecast["short_term"] = {
-                "direction": "UP",
-                "target": nearest_above["price"],
-                "distance_pct": nearest_above["distance_pct"],
-                "reason": f"Ликвидность покупателей (buy stops) на уровне ${nearest_above['price']:.2f}",
-                "probability": "high" if nearest_above["distance_pct"] < 1.0 else "medium"
-            }
-        elif direction == "down" and nearest_below:
-            forecast["short_term"] = {
-                "direction": "DOWN",
-                "target": nearest_below["price"],
-                "distance_pct": nearest_below["distance_pct"],
-                "reason": f"Ликвидность продавцов (sell stops) на уровне ${nearest_below['price']:.2f}",
-                "probability": "high" if nearest_below["distance_pct"] < 1.0 else "medium"
-            }
-
-        # Глобальный прогноз (ATH/ATL)
-        ath_atl = liquidity_data.get("ath_atl", {})
-        if ath_atl:
-            ath = ath_atl.get("ath", {}).get("price", 0)
-            atl = ath_atl.get("atl", {}).get("price", 0)
-            
-            if ath > current_price:
+        
+        # === ЛОГИКА SMART MONEY ===
+        # Если киты накапливают + ликвидность снизу → сначала свип вниз, потом рост
+        # Если киты распределяют + ликвидность сверху → сначала свип вверх, потом падение
+        
+        is_trap_scenario = False
+        
+        # Детекция trap scenario
+        if phase == "manipulation":
+            # Manipulation phase - высокая вероятность ловушки
+            if svd_intent == "accumulating" and liq_direction == "down":
+                is_trap_scenario = True  # Bear trap: свип вниз → разворот вверх
+            elif svd_intent == "distributing" and liq_direction == "up":
+                is_trap_scenario = True  # Bull trap: свип вверх → разворот вниз
+        
+        # === КРАТКОСРОЧНЫЙ ПРОГНОЗ (1-4ч) ===
+        # Цена идёт к ближайшей ликвидности (свип)
+        
+        if is_trap_scenario:
+            # TRAP SCENARIO: краткосрочно свип к ликвидности
+            if svd_intent == "accumulating" and nearest_below:
+                # Киты накапливают, но сначала свип вниз
+                forecast["short_term"] = {
+                    "direction": "DOWN (свип)",
+                    "target": nearest_below["price"],
+                    "distance_pct": nearest_below["distance_pct"],
+                    "reason": f"Свип вниз к ${nearest_below['price']:.2f} (собрать стопы лонгов) перед разворотом вверх",
+                    "probability": "medium",
+                    "timeframe": "1-4ч",
+                    "is_sweep": True
+                }
+            elif svd_intent == "distributing" and nearest_above:
+                # Киты распределяют, но сначала свип вверх
+                forecast["short_term"] = {
+                    "direction": "UP (свип)",
+                    "target": nearest_above["price"],
+                    "distance_pct": nearest_above["distance_pct"],
+                    "reason": f"Свип вверх к ${nearest_above['price']:.2f} (собрать стопы шортов) перед разворотом вниз",
+                    "probability": "medium",
+                    "timeframe": "1-4ч",
+                    "is_sweep": True
+                }
+        else:
+            # НОРМАЛЬНЫЙ СЦЕНАРИЙ: движение в сторону ликвидности
+            if liq_direction == "up" and nearest_above:
+                forecast["short_term"] = {
+                    "direction": "UP",
+                    "target": nearest_above["price"],
+                    "distance_pct": nearest_above["distance_pct"],
+                    "reason": f"Ликвидность покупателей (buy stops) на уровне ${nearest_above['price']:.2f}",
+                    "probability": "high" if nearest_above["distance_pct"] < 1.0 else "medium",
+                    "timeframe": "1-4ч"
+                }
+            elif liq_direction == "down" and nearest_below:
+                forecast["short_term"] = {
+                    "direction": "DOWN",
+                    "target": nearest_below["price"],
+                    "distance_pct": nearest_below["distance_pct"],
+                    "reason": f"Ликвидность продавцов (sell stops) на уровне ${nearest_below['price']:.2f}",
+                    "probability": "high" if nearest_below["distance_pct"] < 1.0 else "medium",
+                    "timeframe": "1-4ч"
+                }
+        
+        # === ГЛОБАЛЬНЫЙ ПРОГНОЗ (1-7д) ===
+        # Основан на SVD intent (что делают киты) + структура рынка
+        
+        if is_trap_scenario:
+            # TRAP: глобально - в противоположную сторону от свипа
+            if svd_intent == "accumulating" and nearest_above:
+                # После свипа вниз → рост вверх
                 forecast["long_term"] = {
                     "direction": "UP",
-                    "target": ath,
-                    "distance_pct": ((ath - current_price) / current_price) * 100,
-                    "reason": f"Исторический максимум (ATH) на ${ath:.2f} - зона максимальной ликвидности",
-                    "probability": "medium"
+                    "target": nearest_above["price"],
+                    "distance_pct": nearest_above["distance_pct"],
+                    "reason": f"После свипа вниз - разворот вверх к ${nearest_above['price']:.2f} (киты накапливают)",
+                    "probability": "medium",
+                    "timeframe": "1-7д"
                 }
-            if atl < current_price:
+            elif svd_intent == "distributing" and nearest_below:
+                # После свипа вверх → падение вниз
                 forecast["long_term"] = {
                     "direction": "DOWN",
-                    "target": atl,
-                    "distance_pct": ((current_price - atl) / current_price) * 100,
-                    "reason": f"Исторический минимум (ATL) на ${atl:.2f} - зона максимальной ликвидности",
-                    "probability": "medium"
+                    "target": nearest_below["price"],
+                    "distance_pct": nearest_below["distance_pct"],
+                    "reason": f"После свипа вверх - разворот вниз к ${nearest_below['price']:.2f} (киты распределяют)",
+                    "probability": "medium",
+                    "timeframe": "1-7д"
                 }
+        else:
+            # НОРМАЛЬНЫЙ СЦЕНАРИЙ: глобально в сторону SVD intent
+            if svd_intent == "accumulating" and trend in ("bullish", "range"):
+                # Киты накапливают → глобально рост
+                if nearest_above:
+                    forecast["long_term"] = {
+                        "direction": "UP",
+                        "target": nearest_above["price"],
+                        "distance_pct": nearest_above["distance_pct"],
+                        "reason": f"Умные деньги накапливают - цель ${nearest_above['price']:.2f}",
+                        "probability": "high" if trend == "bullish" else "medium",
+                        "timeframe": "1-7д"
+                    }
+                else:
+                    # Fallback на ATH
+                    ath = liquidity_data.get("ath_atl", {}).get("ath", {}).get("price", 0)
+                    if ath > current_price:
+                        forecast["long_term"] = {
+                            "direction": "UP",
+                            "target": ath,
+                            "distance_pct": ((ath - current_price) / current_price) * 100,
+                            "reason": f"Умные деньги накапливают - цель ATH ${ath:.2f}",
+                            "probability": "medium",
+                            "timeframe": "1-7д"
+                        }
+            elif svd_intent == "distributing" and trend in ("bearish", "range"):
+                # Киты распределяют → глобально падение
+                if nearest_below:
+                    forecast["long_term"] = {
+                        "direction": "DOWN",
+                        "target": nearest_below["price"],
+                        "distance_pct": nearest_below["distance_pct"],
+                        "reason": f"Умные деньги распределяют - цель ${nearest_below['price']:.2f}",
+                        "probability": "high" if trend == "bearish" else "medium",
+                        "timeframe": "1-7д"
+                    }
+                else:
+                    # Fallback на ATL
+                    atl = liquidity_data.get("ath_atl", {}).get("atl", {}).get("price", 0)
+                    if atl < current_price:
+                        forecast["long_term"] = {
+                            "direction": "DOWN",
+                            "target": atl,
+                            "distance_pct": ((current_price - atl) / current_price) * 100,
+                            "reason": f"Умные деньги распределяют - цель ATL ${atl:.2f}",
+                            "probability": "medium",
+                            "timeframe": "1-7д"
+                        }
+            else:
+                # Fallback: используем ATH/ATL based on structure
+                ath_atl = liquidity_data.get("ath_atl", {})
+                if ath_atl:
+                    ath = ath_atl.get("ath", {}).get("price", 0)
+                    atl = ath_atl.get("atl", {}).get("price", 0)
+                    
+                    if trend == "bullish" and ath > current_price:
+                        forecast["long_term"] = {
+                            "direction": "UP",
+                            "target": ath,
+                            "distance_pct": ((ath - current_price) / current_price) * 100,
+                            "reason": f"Бычий тренд - цель ATH ${ath:.2f}",
+                            "probability": "medium",
+                            "timeframe": "1-7д"
+                        }
+                    elif trend == "bearish" and atl < current_price:
+                        forecast["long_term"] = {
+                            "direction": "DOWN",
+                            "target": atl,
+                            "distance_pct": ((current_price - atl) / current_price) * 100,
+                            "reason": f"Медвежий тренд - цель ATL ${atl:.2f}",
+                            "probability": "medium",
+                            "timeframe": "1-7д"
+                        }
 
         return forecast
 
