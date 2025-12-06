@@ -316,7 +316,197 @@ class DeepMarketAnalyzer:
 
         return scenarios
 
-    def generate_full_report(self, liquidity_data, structure_data, svd_data, ta_data, current_price):
+    def generate_actionable_recommendations(self, decision_result, svd_data, liquidity_data, structure_data, current_price):
+        """
+        Генерация практических рекомендаций "Что делать сейчас"
+        """
+        recommendations = []
+        
+        signal = decision_result.get("signal", "WAIT")
+        confidence = decision_result.get("confidence", 0)
+        phase = svd_data.get("phase", "discovery")
+        trap_data = decision_result.get("trap", {})
+        behavior_data = decision_result.get("behavior", {})
+        
+        svd_intent = svd_data.get("intent", "unclear")
+        cvd_value = svd_data.get("cvd", 0)
+        cvd_slope = svd_data.get("cvd_slope", 0)
+        absorption = svd_data.get("absorption", {})
+        spoof_confirmed = svd_data.get("spoof_confirmed", False)
+        sweeps = liquidity_data.get("sweeps", {})
+        
+        # Определяем nearest liquidity
+        liq_analysis = self.analyze_liquidity_zones(liquidity_data, structure_data, current_price)
+        nearest_above = liq_analysis["above_price"][0] if liq_analysis["above_price"] else None
+        nearest_below = liq_analysis["below_price"][0] if liq_analysis["below_price"] else None
+        
+        # === Рекомендации на основе сигнала и фазы ===
+        
+        if signal == "WAIT":
+            # Вариант 1: Ждать фазу execution
+            if phase in ("manipulation", "discovery"):
+                recommendations.append({
+                    "variant": "1",
+                    "title": "Ждать фазу execution",
+                    "points": [
+                        "Когда фаза сменится на execution - confidence вырастет",
+                        "Trap Engine даст более чёткий сигнал",
+                        f"Сейчас фаза: {phase} (манипуляция/поиск ликвидности)"
+                    ]
+                })
+            
+            # Вариант 2: Следить за свипом
+            if nearest_above or nearest_below:
+                sweep_recommendations = ["Следить за движением цены к ликвидности:"]
+                if nearest_below:
+                    sweep_recommendations.append(
+                        f"Если цена свипнет вниз к ${nearest_below['price']:.2f} и быстро вернётся → BUY signal (bear trap подтверждён)"
+                    )
+                if nearest_above:
+                    sweep_recommendations.append(
+                        f"Если цена свипнет вверх к ${nearest_above['price']:.2f} и быстро вернётся → SELL signal (bull trap подтверждён)"
+                    )
+                
+                if spoof_confirmed:
+                    spoof_side = svd_data.get("spoof_wall", {}).get("side", "unknown")
+                    if spoof_side == "bid":
+                        sweep_recommendations.append("Если спуф (bid) исчезнет + агрессивный селл → SELL signal")
+                    elif spoof_side == "ask":
+                        sweep_recommendations.append("Если спуф (ask) исчезнет + агрессивный бай → BUY signal")
+                
+                recommendations.append({
+                    "variant": "2",
+                    "title": "Следить за свипом",
+                    "points": sweep_recommendations
+                })
+            
+            # Вариант 3: Дождаться подтверждений
+            confirmation_points = []
+            if svd_intent == "accumulating":
+                confirmation_points.append(f"CVD начнёт расти (сейчас: {cvd_value:.2f}, slope: {cvd_slope:.2f})")
+                confirmation_points.append("Absorption на buy (киты поглощают селл-ордера)")
+                if spoof_confirmed:
+                    confirmation_points.append("Спуф исчезнет, но цена устоит (истинное накопление)")
+            elif svd_intent == "distributing":
+                confirmation_points.append(f"CVD начнёт падать (сейчас: {cvd_value:.2f}, slope: {cvd_slope:.2f})")
+                confirmation_points.append("Absorption на sell (киты поглощают бай-ордера)")
+                if spoof_confirmed:
+                    confirmation_points.append("Спуф исчезнет, и цена пойдёт вниз (истинное распределение)")
+            else:
+                confirmation_points.append("Дождаться чёткого SVD intent (accumulating или distributing)")
+                confirmation_points.append("CVD подтвердит направление")
+            
+            if confirmation_points:
+                recommendations.append({
+                    "variant": "3",
+                    "title": "Дождаться подтверждений",
+                    "points": confirmation_points
+                })
+        
+        elif signal == "BUY" and confidence >= 5.0:
+            # Сильный BUY сигнал
+            recommendations.append({
+                "variant": "1",
+                "title": "Готовиться к входу в лонг",
+                "points": [
+                    f"Confidence: {confidence:.1f}/10 - сигнал достаточно сильный",
+                    f"Фаза: {phase}",
+                    f"Зона входа: текущая цена (${current_price:.2f})" if current_price else "Зона входа: по уровням",
+                    f"Цель: {nearest_above['price']:.2f} (+{nearest_above['distance_pct']:.2f}%)" if nearest_above else "Цель: ближайшая ликвидность выше"
+                ]
+            })
+            recommendations.append({
+                "variant": "2",
+                "title": "Риск-менеджмент",
+                "points": [
+                    f"Стоп: ниже ${nearest_below['price']:.2f}" if nearest_below else "Стоп: ниже ближайшего swing low",
+                    "Следить за изменением фазы на distribution (сигнал к выходу)",
+                    "Если CVD начнёт падать - уменьшить позицию"
+                ]
+            })
+        
+        elif signal == "BUY" and confidence < 5.0:
+            # Слабый BUY сигнал
+            recommendations.append({
+                "variant": "1",
+                "title": "Подождать усиления сигнала",
+                "points": [
+                    f"Confidence: {confidence:.1f}/10 - слишком низкая уверенность",
+                    "Дождаться роста confidence до 5-6",
+                    f"Следить за сменой фазы на execution"
+                ]
+            })
+            recommendations.append({
+                "variant": "2",
+                "title": "Консервативный вход (малая позиция)",
+                "points": [
+                    "Войти небольшой позицией (10-20% от обычной)",
+                    "Дождаться подтверждения (CVD рост, absorption на buy)",
+                    "Увеличить позицию при росте confidence"
+                ]
+            })
+        
+        elif signal == "SELL" and confidence >= 5.0:
+            # Сильный SELL сигнал
+            recommendations.append({
+                "variant": "1",
+                "title": "Готовиться к входу в шорт",
+                "points": [
+                    f"Confidence: {confidence:.1f}/10 - сигнал достаточно сильный",
+                    f"Фаза: {phase}",
+                    f"Зона входа: текущая цена (${current_price:.2f})" if current_price else "Зона входа: по уровням",
+                    f"Цель: {nearest_below['price']:.2f} (-{nearest_below['distance_pct']:.2f}%)" if nearest_below else "Цель: ближайшая ликвидность ниже"
+                ]
+            })
+            recommendations.append({
+                "variant": "2",
+                "title": "Риск-менеджмент",
+                "points": [
+                    f"Стоп: выше ${nearest_above['price']:.2f}" if nearest_above else "Стоп: выше ближайшего swing high",
+                    "Следить за изменением фазы на execution вверх (сигнал к выходу)",
+                    "Если CVD начнёт расти - уменьшить позицию"
+                ]
+            })
+        
+        elif signal == "SELL" and confidence < 5.0:
+            # Слабый SELL сигнал
+            recommendations.append({
+                "variant": "1",
+                "title": "Подождать усиления сигнала",
+                "points": [
+                    f"Confidence: {confidence:.1f}/10 - слишком низкая уверенность",
+                    "Дождаться роста confidence до 5-6",
+                    f"Следить за сменой фазы на execution"
+                ]
+            })
+            recommendations.append({
+                "variant": "2",
+                "title": "Консервативный вход (малая позиция)",
+                "points": [
+                    "Войти небольшой позицией (10-20% от обычной)",
+                    "Дождаться подтверждения (CVD падение, absorption на sell)",
+                    "Увеличить позицию при росте confidence"
+                ]
+            })
+        
+        # Дополнительные рекомендации на основе trap
+        if trap_data.get("is_trap"):
+            trap_type = trap_data.get("trap_type")
+            expected_reversal = trap_data.get("expected_reversal_direction")
+            recommendations.append({
+                "variant": "⚠️",
+                "title": f"ЛОВУШКА: {trap_type}",
+                "points": [
+                    f"Trap Engine обнаружил {trap_type}",
+                    f"Ожидается разворот: {expected_reversal}",
+                    "Не входить против ожидаемого разворота",
+                    "Дождаться подтверждения trap через свип"
+                ]
+            })
+        
+        return recommendations
+
+    def generate_full_report(self, liquidity_data, structure_data, svd_data, ta_data, current_price, decision_result=None):
         """
         Генерация полного глубокого отчета
         """
@@ -333,11 +523,19 @@ class DeepMarketAnalyzer:
         
         # Сценарии
         scenarios = self.generate_scenarios(liquidity_analysis, structure_data, svd_data, forecast)
+        
+        # Практические рекомендации
+        recommendations = []
+        if decision_result:
+            recommendations = self.generate_actionable_recommendations(
+                decision_result, svd_data, liquidity_data, structure_data, current_price
+            )
 
         return {
             "liquidity_analysis": liquidity_analysis,
             "forecast": forecast,
             "smart_money": smart_money,
-            "scenarios": scenarios
+            "scenarios": scenarios,
+            "recommendations": recommendations
         }
 

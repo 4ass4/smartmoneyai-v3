@@ -161,7 +161,7 @@ class BotHandlers:
             # Глубокий анализ
             deep_analyzer = DeepMarketAnalyzer()
             deep_report = deep_analyzer.generate_full_report(
-                liquidity_data, structure_data, svd_data, ta_data, current_price
+                liquidity_data, structure_data, svd_data, ta_data, current_price, decision_result=signal
             )
             
             # Формируем глубокий отчет
@@ -238,6 +238,22 @@ class BotHandlers:
                 message_parts.append(f"   Срок: {scenario.get('timeframe', 'N/A')}")
             
             message_parts.append("")
+            
+            # Практические рекомендации
+            recommendations = deep_report.get("recommendations", [])
+            if recommendations:
+                message_parts.append("💡 ЧТО ДЕЛАТЬ СЕЙЧАС:")
+                message_parts.append("")
+                for rec in recommendations:
+                    variant = rec.get("variant", "")
+                    title = rec.get("title", "")
+                    points = rec.get("points", [])
+                    
+                    message_parts.append(f"Вариант {variant}: {title}")
+                    for point in points:
+                        message_parts.append(f"   • {point}")
+                    message_parts.append("")
+            
             message_parts.append("📊 ДЕТАЛИ:")
             message_parts.append(f"• Структура: {structure_data.get('trend', 'unknown')}")
             message_parts.append(f"• Ликвидность: {liquidity_data.get('direction', {}).get('direction', 'neutral')}")
