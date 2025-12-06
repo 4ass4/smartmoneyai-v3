@@ -147,6 +147,9 @@ class Config:
         self.MIN_TRADES_COUNT = int(os.getenv('MIN_TRADES_COUNT', '20'))
         self.MIN_OHLCV_CANDLES = int(os.getenv('MIN_OHLCV_CANDLES', '50'))
         self.MIN_DATA_QUALITY = float(os.getenv('MIN_DATA_QUALITY', '0.5'))  # Минимальный порог quality_score
+        
+        # Conflict Detection Settings
+        self.CRITICAL_CONFLICT_THRESHOLD = int(os.getenv('CRITICAL_CONFLICT_THRESHOLD', '2'))  # Количество критичных конфликтов для force WAIT
     
     @property
     def analysis_interval(self) -> int:

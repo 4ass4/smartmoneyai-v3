@@ -1,6 +1,7 @@
 # modules/decision/decision_engine.py
 
 from .risk_filters import apply_risk_filters
+from .conflict_detector import ConflictDetector
 
 
 class DecisionEngine:
@@ -12,6 +13,7 @@ class DecisionEngine:
     def __init__(self, config=None):
         self.config = config
         self.min_confidence = 7.0 if config is None else getattr(config, 'MIN_CONFIDENCE', 7.0)
+        self.conflict_detector = ConflictDetector(config)
 
     def analyze(self, liquidity_data, svd_data, market_structure, ta_data, current_price=None, htf_context=None, htf_liquidity=None, data_quality=None):
         """
@@ -47,6 +49,32 @@ class DecisionEngine:
         # Расчет confidence
         confidence = self._calculate_confidence(signals)
         
+        # Детекция конфликтов
+        conflict_result = self.conflict_detector.detect_conflicts(signals)
+        signals["conflicts"] = conflict_result
+        
+        # Проверка критичных конфликтов
+        should_wait, conflict_reason = self.conflict_detector.should_force_wait(conflict_result)
+        if should_wait:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"🚫 Сигнал {direction} заблокирован из-за критичных конфликтов")
+            return {
+                "signal": "WAIT",
+                "confidence": 0,
+                "reason": conflict_reason,
+                "explanation": conflict_reason,
+                "conflicts": conflict_result
+            }
+        
+        # Дополнительный штраф confidence за major конфликты
+        if conflict_result["severity"] == "major":
+            conflict_penalty = min(2.0, conflict_result["conflict_count"] * 0.5)
+            confidence -= conflict_penalty
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"   📉 Штраф за конфликты: -{conflict_penalty:.1f} (severity: major)")
+        
         # Опциональный фильтр: только фаза execution (меньше шумов, выше "уверенность" в смысле действия китов)
         svd_phase = signals["svd"].get("phase", "discovery")
         if getattr(self.config, "EXECUTION_ONLY_SIGNALS", False):
@@ -58,7 +86,8 @@ class DecisionEngine:
                     "signal": "WAIT",
                     "confidence": 0,
                     "reason": "Ожидаем фазу execution для подтверждения действий крупных игроков",
-                    "explanation": "Недостаточно признаков фазы execution, сигнал пропущен"
+                    "explanation": "Недостаточно признаков фазы execution, сигнал пропущен",
+                    "conflicts": conflict_result
                 }
 
         # Применение фильтров риска
@@ -93,7 +122,8 @@ class DecisionEngine:
                 "main": explanation,
                 "alternative": self._generate_alternative_scenario(signals)
             },
-            "levels": levels
+            "levels": levels,
+            "conflicts": conflict_result
         }
     
     def _determine_direction(self, signals):
