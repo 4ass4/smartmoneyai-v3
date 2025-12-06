@@ -138,6 +138,15 @@ class Config:
         os.makedirs(self.CACHE_DIR, exist_ok=True)
         os.makedirs(self.SAMPLES_DIR, exist_ok=True)
         os.makedirs(self.LOGS_DIR, exist_ok=True)
+        
+        # Data Validation Settings
+        self.MAX_AGE_OHLCV_SECONDS = int(os.getenv('MAX_AGE_OHLCV_SECONDS', '300'))
+        self.MAX_AGE_ORDERBOOK_SECONDS = int(os.getenv('MAX_AGE_ORDERBOOK_SECONDS', '10'))
+        self.MAX_AGE_TRADES_SECONDS = int(os.getenv('MAX_AGE_TRADES_SECONDS', '30'))
+        self.MIN_ORDERBOOK_LEVELS = int(os.getenv('MIN_ORDERBOOK_LEVELS', '10'))
+        self.MIN_TRADES_COUNT = int(os.getenv('MIN_TRADES_COUNT', '20'))
+        self.MIN_OHLCV_CANDLES = int(os.getenv('MIN_OHLCV_CANDLES', '50'))
+        self.MIN_DATA_QUALITY = float(os.getenv('MIN_DATA_QUALITY', '0.5'))  # Минимальный порог quality_score
     
     @property
     def analysis_interval(self) -> int:

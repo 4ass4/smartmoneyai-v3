@@ -13,6 +13,7 @@ from modules.svd.svd_engine import SVDEngine
 from modules.market_structure.market_structure_engine import MarketStructureEngine
 from modules.ta_engine.ta_engine import TAEngine
 from modules.decision.decision_engine import DecisionEngine
+from modules.utils.data_validator import DataQualityValidator
 from bot.notifications import NotificationManager
 from bot.handlers import BotHandlers
 from telegram import Bot
@@ -39,6 +40,7 @@ async def main():
     ws_manager = WebSocketManager(config)
     data_feed = DataFeed(config, ws_manager=ws_manager)
     notification_manager = NotificationManager(config)
+    data_validator = DataQualityValidator(config)
     
     # Инициализация Telegram бота
     bot_token = config.TELEGRAM_BOT_TOKEN
@@ -115,9 +117,29 @@ async def main():
         while True:
             # Получение данных
             market_data = await data_feed.get_latest_data()
+            fetch_timestamp = data_feed.get_fetch_timestamp()
             
             if market_data["ohlcv"].empty:
                 logger.warning("Нет данных OHLCV")
+                await asyncio.sleep(config.analysis_interval)
+                continue
+            
+            # Валидация качества данных
+            validation_result = data_validator.validate_all(
+                market_data["ohlcv"],
+                market_data.get("orderbook"),
+                market_data.get("trades"),
+                fetch_timestamp
+            )
+            
+            # Логируем качество данных
+            overall_quality = validation_result["overall_quality"]
+            logger.info(f"📈 Качество данных: {overall_quality:.2f}/1.0")
+            
+            # Если качество слишком низкое — пропускаем анализ
+            if overall_quality < config.MIN_DATA_QUALITY:
+                logger.warning(f"⚠️ Качество данных ниже порога ({overall_quality:.2f} < {config.MIN_DATA_QUALITY}), пропускаем итерацию")
+                logger.warning(f"   OHLCV: {validation_result['ohlcv']['quality_score']:.2f}, Orderbook: {validation_result['orderbook']['quality_score']:.2f}, Trades: {validation_result['trades']['quality_score']:.2f}")
                 await asyncio.sleep(config.analysis_interval)
                 continue
             
@@ -146,7 +168,7 @@ async def main():
                 # 4. TA
                 ta_data = ta_engine.analyze(market_data["ohlcv"])
                 
-                # 5. Decision (передаем текущую цену и HTF контекст)
+                # 5. Decision (передаем текущую цену, HTF контекст и качество данных)
                 current_price = market_data["ohlcv"]["close"].iloc[-1]
                 signal = decision_engine.analyze(
                     liquidity_data,
@@ -161,7 +183,8 @@ async def main():
                     htf_liquidity={
                         "htf1": htf1_liq.get("direction", {}) if htf1_liq else {},
                         "htf2": htf2_liq.get("direction", {}) if htf2_liq else {},
-                    }
+                    },
+                    data_quality=validation_result
                 )
                 
                 # Добавляем текущую цену в signals для расчета уровней

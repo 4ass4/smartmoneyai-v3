@@ -1,6 +1,7 @@
 # api/data_feed.py
 
 import pandas as pd
+import time
 from .bingx_client import BingXClient
 
 
@@ -21,6 +22,7 @@ class DataFeed:
         # Получаем символ в правильном формате
         self.symbol = config.get_symbol_for_api() if hasattr(config, 'get_symbol_for_api') else getattr(config, 'SYMBOL', 'BTC-USDT')
         self.timeframe = getattr(config, 'TIMEFRAME', '15m')
+        self.last_fetch_timestamp = None
 
     def _get_klines(self, symbol, interval, limit):
         klines = self.client.get_klines(symbol, interval, limit)
@@ -180,9 +182,16 @@ class DataFeed:
         Returns:
             Dict со всеми данными
         """
+        self.last_fetch_timestamp = int(time.time() * 1000)
         return {
             "ohlcv": await self.get_ohlcv(),
             "orderbook": await self.get_orderbook(),
             "trades": await self.get_trades()
         }
+    
+    def get_fetch_timestamp(self):
+        """
+        Возвращает timestamp последнего fetch
+        """
+        return self.last_fetch_timestamp
 

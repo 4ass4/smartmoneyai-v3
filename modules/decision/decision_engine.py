@@ -13,7 +13,7 @@ class DecisionEngine:
         self.config = config
         self.min_confidence = 7.0 if config is None else getattr(config, 'MIN_CONFIDENCE', 7.0)
 
-    def analyze(self, liquidity_data, svd_data, market_structure, ta_data, current_price=None, htf_context=None, htf_liquidity=None):
+    def analyze(self, liquidity_data, svd_data, market_structure, ta_data, current_price=None, htf_context=None, htf_liquidity=None, data_quality=None):
         """
         Главный метод принятия решения
         
@@ -23,6 +23,7 @@ class DecisionEngine:
             market_structure: данные от MarketStructureEngine
             ta_data: данные от TAEngine
             current_price: текущая цена (опционально)
+            data_quality: результат валидации данных (опционально)
             
         Returns:
             Dict с финальным сигналом и объяснением
@@ -35,7 +36,8 @@ class DecisionEngine:
             "ta": ta_data,
             "current_price": current_price,
             "htf": htf_context or {},
-            "htf_liq": htf_liquidity or {}
+            "htf_liq": htf_liquidity or {},
+            "data_quality": data_quality or {"overall_quality": 1.0}
         }
         
         # Определение направления
@@ -299,6 +301,16 @@ class DecisionEngine:
         # Если был пост-реверсал после свипа в сторону сигнала — еще бонус
         if sweeps.get("post_reversal") and signals.get("signal") in ("BUY", "SELL"):
             final_confidence += 0.2
+        
+        # Штраф за низкое качество данных
+        data_quality = signals.get("data_quality", {})
+        overall_quality = data_quality.get("overall_quality", 1.0)
+        if overall_quality < 0.8:
+            quality_penalty = (0.8 - overall_quality) * 5  # до -4.0 при quality=0
+            final_confidence -= quality_penalty
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"   📉 Штраф за качество данных: -{quality_penalty:.2f} (quality: {overall_quality:.2f})")
 
         return min(max(final_confidence, 0), 10)
     

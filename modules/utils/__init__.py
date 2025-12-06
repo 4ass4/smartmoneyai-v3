@@ -7,6 +7,7 @@ from .smoothing import smooth_data, exponential_smooth
 from .time_tools import get_timestamp, format_time, is_recent
 from .merge_data import merge_ohlcv_data, align_dataframes
 from .validators import validate_ohlcv, validate_price
+from .data_validator import DataQualityValidator
 
 __all__ = [
     'calculate_percentage_change',
@@ -20,6 +21,7 @@ __all__ = [
     'merge_ohlcv_data',
     'align_dataframes',
     'validate_ohlcv',
-    'validate_price'
+    'validate_price',
+    'DataQualityValidator'
 ]
 
