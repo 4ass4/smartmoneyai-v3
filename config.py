@@ -150,6 +150,9 @@ class Config:
         
         # Conflict Detection Settings
         self.CRITICAL_CONFLICT_THRESHOLD = int(os.getenv('CRITICAL_CONFLICT_THRESHOLD', '2'))  # Количество критичных конфликтов для force WAIT
+        
+        # Trap Engine Settings
+        self.TRAP_SCORE_THRESHOLD = float(os.getenv('TRAP_SCORE_THRESHOLD', '3.0'))  # Минимальный score для детекции trap
     
     @property
     def analysis_interval(self) -> int:

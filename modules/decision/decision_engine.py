@@ -2,6 +2,7 @@
 
 from .risk_filters import apply_risk_filters
 from .conflict_detector import ConflictDetector
+from modules.trap.trap_engine import TrapEngine
 
 
 class DecisionEngine:
@@ -14,6 +15,7 @@ class DecisionEngine:
         self.config = config
         self.min_confidence = 7.0 if config is None else getattr(config, 'MIN_CONFIDENCE', 7.0)
         self.conflict_detector = ConflictDetector(config)
+        self.trap_engine = TrapEngine(config)
 
     def analyze(self, liquidity_data, svd_data, market_structure, ta_data, current_price=None, htf_context=None, htf_liquidity=None, data_quality=None):
         """
@@ -104,6 +106,28 @@ class DecisionEngine:
                 "explanation": filtered["reason"]
             }
         
+        # Trap Detection - ловушки для толпы
+        trap_result = self.trap_engine.analyze(
+            signals["svd"],
+            signals["liquidity"],
+            signals["structure"],
+            signals["ta"],
+            current_price
+        )
+        signals["trap"] = trap_result
+        
+        # Применяем корректировку сигнала на основе trap detection
+        trap_adjustment = self.trap_engine.get_trap_signal_adjustment(trap_result, direction)
+        if trap_adjustment["adjusted_signal"] != direction:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"🪤 Trap Engine: {trap_adjustment['reason']}")
+            direction = trap_adjustment["adjusted_signal"]
+        
+        # Корректируем confidence на основе trap
+        confidence += trap_adjustment["confidence_adjustment"]
+        confidence = min(max(confidence, 0), 10)
+        
         # Генерация объяснения
         explanation = self._generate_explanation(signals, direction, confidence)
         
@@ -123,7 +147,8 @@ class DecisionEngine:
                 "alternative": self._generate_alternative_scenario(signals)
             },
             "levels": levels,
-            "conflicts": conflict_result
+            "conflicts": conflict_result,
+            "trap": trap_result
         }
     
     def _determine_direction(self, signals):
