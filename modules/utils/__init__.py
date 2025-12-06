@@ -15,6 +15,11 @@ from .normalize import (
     normalize_path_cost_on_atr,
     get_sweep_threshold
 )
+from .time_decay import (
+    calculate_time_decay,
+    apply_decay_to_levels,
+    get_weighted_importance
+)
 
 __all__ = [
     'calculate_percentage_change',
@@ -34,6 +39,9 @@ __all__ = [
     'normalize_price_move_on_atr',
     'get_absorption_threshold',
     'normalize_path_cost_on_atr',
-    'get_sweep_threshold'
+    'get_sweep_threshold',
+    'calculate_time_decay',
+    'apply_decay_to_levels',
+    'get_weighted_importance'
 ]
 
