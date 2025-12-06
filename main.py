@@ -14,6 +14,7 @@ from modules.market_structure.market_structure_engine import MarketStructureEngi
 from modules.ta_engine.ta_engine import TAEngine
 from modules.decision.decision_engine import DecisionEngine
 from modules.utils.data_validator import DataQualityValidator
+from modules.utils.healthcheck import HealthMonitor
 from bot.notifications import NotificationManager
 from bot.handlers import BotHandlers
 from telegram import Bot
@@ -41,6 +42,7 @@ async def main():
     data_feed = DataFeed(config, ws_manager=ws_manager)
     notification_manager = NotificationManager(config)
     data_validator = DataQualityValidator(config)
+    health_monitor = HealthMonitor()
     
     # Инициализация Telegram бота
     bot_token = config.TELEGRAM_BOT_TOKEN
@@ -67,7 +69,8 @@ async def main():
                 liquidity_engine,
                 svd_engine,
                 market_structure_engine,
-                ta_engine
+                ta_engine,
+                health_monitor=health_monitor
             )
             
             # Регистрация команд
@@ -82,11 +85,14 @@ async def main():
                 await handlers.handle_analysis(update, context)
             async def help_wrapper(update, context: ContextTypes.DEFAULT_TYPE):
                 await handlers.handle_help(update, context)
+            async def health_wrapper(update, context: ContextTypes.DEFAULT_TYPE):
+                await handlers.handle_health(update, context)
             
             application.add_handler(CommandHandler("start", start_wrapper))
             application.add_handler(CommandHandler("status", status_wrapper))
             application.add_handler(CommandHandler("signal", signal_wrapper))
             application.add_handler(CommandHandler("analysis", analysis_wrapper))
+            application.add_handler(CommandHandler("health", health_wrapper))
             application.add_handler(CommandHandler("help", help_wrapper))
             
             # Запуск бота в фоне
@@ -202,6 +208,9 @@ async def main():
                 confidence = signal.get("confidence", 0)
                 logger.info(f"📊 Сгенерирован сигнал: {signal_type} (confidence: {confidence:.1f}/10)")
                 
+                # Записываем в healthcheck
+                health_monitor.record_signal(signal_type)
+                
                 # Отправка сигнала в Telegram с детальными данными
                 if signal and signal.get("signal") != "WAIT":
                     logger.info(f"✅ Сигнал {signal_type} не WAIT, отправляем...")
@@ -217,11 +226,17 @@ async def main():
                         logger.info(f"✅ Сигнал {signal_type} успешно отправлен в Telegram")
                     except Exception as e:
                         logger.error(f"❌ Ошибка отправки сигнала: {e}", exc_info=True)
+                        health_monitor.record_error()
                 else:
                     logger.debug(f"⏸️ Сигнал WAIT или отсутствует, пропускаем отправку")
                 
+                # Периодически логируем статус (каждые 10 итераций или 30 минут)
+                if health_monitor.signal_count % 10 == 0 or health_monitor.uptime_seconds() % 1800 < config.analysis_interval:
+                    health_monitor.log_status()
+                
             except Exception as e:
                 logger.error(f"Ошибка анализа: {e}", exc_info=True)
+                health_monitor.record_error()
             
             await asyncio.sleep(config.analysis_interval)
             

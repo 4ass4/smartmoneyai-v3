@@ -14,7 +14,7 @@ class BotHandlers:
     """
 
     def __init__(self, bot, decision_engine, data_feed, liquidity_engine, 
-                 svd_engine, market_structure_engine, ta_engine):
+                 svd_engine, market_structure_engine, ta_engine, health_monitor=None):
         self.bot = bot
         self.decision_engine = decision_engine
         self.data_feed = data_feed
@@ -22,6 +22,7 @@ class BotHandlers:
         self.svd_engine = svd_engine
         self.market_structure_engine = market_structure_engine
         self.ta_engine = ta_engine
+        self.health_monitor = health_monitor
         self.last_signal = None  # Храним последний сигнал
 
     def set_last_signal(self, signal):
@@ -259,6 +260,48 @@ class BotHandlers:
             logger.error(f"Ошибка в handle_analysis: {e}", exc_info=True)
             await update.message.reply_text(f"❌ Ошибка: {str(e)}")
 
+    async def handle_health(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка команды /health - статус системы"""
+        if not self.health_monitor:
+            await update.message.reply_text("❌ Мониторинг недоступен")
+            return
+        
+        status = self.health_monitor.get_status()
+        
+        status_icon = {
+            "healthy": "✅",
+            "degraded": "⚠️",
+            "unhealthy": "❌"
+        }
+        icon = status_icon.get(status["status"], "❓")
+        
+        message = f"""
+{icon} СТАТУС СИСТЕМЫ: {status['status'].upper()}
+
+⏱ Время работы: {status['uptime_hours']:.1f}ч
+
+📊 СИГНАЛЫ:
+   Всего: {status['signal_count']}
+   BUY: {status['signal_types']['BUY']}
+   SELL: {status['signal_types']['SELL']}
+   WAIT: {status['signal_types']['WAIT']}
+   Последний: {status['last_signal_seconds_ago']:.0f}с назад
+
+📡 API/WS:
+   API вызовы: {status['api_calls']}
+   API ошибки: {status['api_errors']}
+   Success rate: {status['api_success_rate']:.1%}
+   WS reconnects: {status['ws_reconnects']}
+
+💻 СИСТЕМА:
+   CPU: {status['system']['cpu_percent']:.1f}%
+   Память: {status['system']['memory_percent']:.1f}%
+   Доступно: {status['system']['memory_available_mb']:.0f}MB
+
+❌ Ошибки: {status['error_count']}
+        """
+        await update.message.reply_text(message.strip())
+
     async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка команды /help"""
         message = """
@@ -271,6 +314,7 @@ class BotHandlers:
 /status - статус системы
 /signal - получить текущий анализ и сигнал
 /analysis - полный детальный анализ рынка
+/health - состояние системы и метрики
 /help - эта справка
 
 💡 Используйте /signal для получения актуального анализа по требованию
