@@ -10,6 +10,7 @@ from .spoof_detector import detect_spoof_wall
 from .trade_buckets import bucket_trades
 from .svd_score import svd_confidence_score
 from .orderbook_path import compute_path_cost
+from .phase_tracker import PhaseTracker
 from collections import deque
 
 
@@ -19,6 +20,7 @@ class SVDEngine:
         self._prev_spoof = None  # {"side":..., "price":..., "ts_start":..., "ts_last":...}
         self._prev_best = {"bid": None, "ask": None, "ts": None}
         self._spoof_events = deque(maxlen=20)  # история подтвержденных спуфов
+        self.phase_tracker = PhaseTracker(history_size=10)
 
     def analyze(self, trades: list, orderbook: dict, atr_pct=None):
         """
@@ -155,14 +157,27 @@ class SVDEngine:
         else:
             path_cost_normalized = path_cost
         
-        # Определяем фазу (грубая эвристика)
-        phase = "discovery"
-        if spoof_confirmed or spoof_wall.get("side"):
-            phase = "manipulation"
-        if absorption.get("absorbing") or velocity.get("velocity", 0) > 20 or aggression.get("buy_aggression", 0) + aggression.get("sell_aggression", 0) > 0:
-            phase = "execution"
-        if intent in ("accumulating", "distributing") and dom_imbalance.get("side") in ("bid", "ask"):
-            phase = "distribution"
+        # Определяем фазу (улучшенная эвристика с приоритетами)
+        detected_phase = "discovery"
+        
+        # Приоритет 1: execution (сильные признаки исполнения)
+        if absorption.get("absorbing") or velocity.get("velocity", 0) > 20:
+            detected_phase = "execution"
+        # Приоритет 2: manipulation (спуфы, тонкие зоны)
+        elif spoof_confirmed or spoof_wall.get("side"):
+            detected_phase = "manipulation"
+        # Приоритет 3: distribution (явное накопление/распределение с DOM подтверждением)
+        elif intent in ("accumulating", "distributing") and dom_imbalance.get("side") in ("bid", "ask"):
+            detected_phase = "distribution"
+        # По умолчанию: discovery
+        else:
+            detected_phase = "discovery"
+        
+        # Обновляем PhaseTracker с новой фазой
+        phase_info = self.phase_tracker.update_phase(detected_phase, current_ts)
+        phase = phase_info["phase"]
+        phase_confidence = phase_info["phase_confidence"]
+        phase_changed = phase_info["phase_changed"]
 
         return {
             "delta": delta,
@@ -185,6 +200,10 @@ class SVDEngine:
             "strong_fomo": strong_fomo,
             "strong_panic": strong_panic,
             "phase": phase,
+            "phase_info": phase_info,  # Полная информация о фазе
+            "phase_confidence": phase_confidence,
+            "phase_changed": phase_changed,
+            "expected_next_phases": self.phase_tracker.get_expected_next_phase(),
             "intent": intent,
             "confidence": score,
             "atr_pct": atr_pct  # Для справки
