@@ -287,6 +287,24 @@ class DecisionEngine:
         elif svd_phase == "distribution":
             phase_bonus += 0.2
         base_confidence = max(0, min(10, base_confidence + phase_bonus))
+        
+        # CVD (Cumulative Volume Delta) подтверждение
+        cvd_confirms = signals["svd"].get("cvd_confirms_intent", False)
+        cvd_divergence = signals["svd"].get("cvd_divergence", False)
+        cvd_slope = signals["svd"].get("cvd_slope", 0)
+        
+        # Если CVD подтверждает intent — бонус
+        if cvd_confirms:
+            base_confidence += 0.4
+        # Если CVD дивергенция с ценой — предупреждение о возможном развороте
+        if cvd_divergence:
+            base_confidence -= 0.3
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"⚠️ CVD дивергенция обнаружена (slope: {cvd_slope:.2f})")
+        # Если фаза distribution/trend, но CVD не подтверждает — штраф
+        if svd_phase in ("distribution", "execution") and not cvd_confirms:
+            base_confidence -= 0.3
 
         # Если есть confidence от модулей, усредняем
         if scores:

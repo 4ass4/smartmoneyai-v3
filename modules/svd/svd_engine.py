@@ -11,6 +11,7 @@ from .trade_buckets import bucket_trades
 from .svd_score import svd_confidence_score
 from .orderbook_path import compute_path_cost
 from .phase_tracker import PhaseTracker
+from .cvd import CVDCalculator
 from collections import deque
 
 
@@ -21,6 +22,7 @@ class SVDEngine:
         self._prev_best = {"bid": None, "ask": None, "ts": None}
         self._spoof_events = deque(maxlen=20)  # история подтвержденных спуфов
         self.phase_tracker = PhaseTracker(history_size=10)
+        self.cvd_calculator = CVDCalculator()  # CVD для подтверждения трендов
 
     def analyze(self, trades: list, orderbook: dict, atr_pct=None):
         """
@@ -59,8 +61,14 @@ class SVDEngine:
         best_ask = orderbook["asks"][0][0] if orderbook and orderbook.get("asks") else None
         
         score = svd_confidence_score(delta, absorption, aggression, velocity, dom_imbalance, bucket_metrics)
+        
+        # CVD (Cumulative Volume Delta) для подтверждения тренда
+        cvd_data = self.cvd_calculator.calculate_cvd_from_trades(trades, reset_on_swing=False)
+        cvd_value = cvd_data["cvd"]
+        cvd_slope = cvd_data["cvd_slope"]
+        cvd_divergence = cvd_data["divergence"]
 
-        # Smart Money intent с учетом доминирующей стороны стакана
+        # Smart Money intent с учетом доминирующей стороны стакана и CVD
         if delta < 0 and aggression["sell_aggression"] > aggression["buy_aggression"]:
             intent = "distributing"
         elif delta > 0 and aggression["buy_aggression"] > aggression["sell_aggression"]:
@@ -73,6 +81,13 @@ class SVDEngine:
             intent = "accumulating"
         elif dom_imbalance.get("side") == "ask" and intent == "distributing":
             intent = "distributing"
+        
+        # CVD подтверждение: если CVD slope противоречит intent — ослабляем уверенность
+        cvd_confirms_intent = False
+        if intent == "accumulating" and cvd_slope > 0:
+            cvd_confirms_intent = True
+        elif intent == "distributing" and cvd_slope < 0:
+            cvd_confirms_intent = True
 
         # Трекинг спуфов: время жизни и исчезновение
         spoof_confirmed = False
@@ -182,6 +197,10 @@ class SVDEngine:
         return {
             "delta": delta,
             "delta_normalized": delta_normalized,  # Нормированная дельта
+            "cvd": cvd_value,  # CVD (накопительная дельта)
+            "cvd_slope": cvd_slope,  # Наклон CVD (trend)
+            "cvd_divergence": cvd_divergence,  # Дивергенция CVD с ценой
+            "cvd_confirms_intent": cvd_confirms_intent,  # CVD подтверждает intent
             "absorption": absorption,
             "aggression": aggression,
             "velocity": velocity,
