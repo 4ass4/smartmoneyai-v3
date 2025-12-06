@@ -68,13 +68,27 @@ class SVDEngine:
         cvd_slope = cvd_data["cvd_slope"]
         cvd_divergence = cvd_data["divergence"]
 
-        # Smart Money intent с учетом доминирующей стороны стакана и CVD
-        if delta < 0 and aggression["sell_aggression"] > aggression["buy_aggression"]:
-            intent = "distributing"
-        elif delta > 0 and aggression["buy_aggression"] > aggression["sell_aggression"]:
+        # Smart Money intent с ПРИОРИТЕТОМ НА CVD SLOPE (более важен, чем snapshot delta)
+        # CVD slope показывает РЕАЛЬНЫЙ тренд, а delta - только текущий момент
+        
+        # Пороги для CVD slope (чтобы отфильтровать шум)
+        cvd_threshold = 0.5
+        
+        # ПРИОРИТЕТ 1: CVD slope (если значимый)
+        if cvd_slope > cvd_threshold:
+            # CVD растёт → accumulating (даже если delta отрицательная краткосрочно)
             intent = "accumulating"
+        elif cvd_slope < -cvd_threshold:
+            # CVD падает → distributing (даже если delta положительная краткосрочно)
+            intent = "distributing"
         else:
-            intent = "unclear"
+            # ПРИОРИТЕТ 2: snapshot delta + aggression (если CVD slope близко к 0)
+            if delta < 0 and aggression["sell_aggression"] > aggression["buy_aggression"]:
+                intent = "distributing"
+            elif delta > 0 and aggression["buy_aggression"] > aggression["sell_aggression"]:
+                intent = "accumulating"
+            else:
+                intent = "unclear"
 
         # Усиливаем intent, если DOM подтверждает сторону
         if dom_imbalance.get("side") == "bid" and intent == "accumulating":
@@ -82,12 +96,14 @@ class SVDEngine:
         elif dom_imbalance.get("side") == "ask" and intent == "distributing":
             intent = "distributing"
         
-        # CVD подтверждение: если CVD slope противоречит intent — ослабляем уверенность
+        # CVD подтверждение: проверяем согласованность CVD slope с intent
         cvd_confirms_intent = False
         if intent == "accumulating" and cvd_slope > 0:
             cvd_confirms_intent = True
         elif intent == "distributing" and cvd_slope < 0:
             cvd_confirms_intent = True
+        elif intent == "unclear":
+            cvd_confirms_intent = True  # Для unclear не штрафуем
 
         # Трекинг спуфов: время жизни и исчезновение
         spoof_confirmed = False
