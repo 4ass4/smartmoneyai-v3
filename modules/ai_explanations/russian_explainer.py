@@ -30,22 +30,38 @@ class RussianExplainer:
         return explanations.get(direction, f"Направление: {direction}")
 
     @staticmethod
-    def explain_svd_intent(intent, delta):
-        """Объяснение намерений умных денег"""
+    def explain_svd_intent(intent, delta, cvd=None, cvd_slope=None):
+        """Объяснение намерений умных денег с CVD"""
         delta_abs = abs(delta)
         
         if intent == "accumulating":
             if delta_abs > 50:
-                return f"💰 СИЛЬНОЕ НАКОПЛЕНИЕ - крупные игроки активно покупают (дельта: +{delta:.2f})"
+                msg = f"💰 СИЛЬНОЕ НАКОПЛЕНИЕ - крупные игроки активно покупают"
             else:
-                return f"💰 Накопление позиций - крупные игроки постепенно покупают (дельта: +{delta:.2f})"
+                msg = f"💰 Накопление позиций - крупные игроки постепенно покупают"
+            msg += f"\n   • Дельта (краткосрочно): {delta:+.2f}"
+            if cvd is not None:
+                msg += f"\n   • CVD (накопительная): {cvd:+.2f}"
+            if cvd_slope is not None:
+                msg += f"\n   • CVD slope: {cvd_slope:+.2f} — {'растёт' if cvd_slope > 0 else 'падает' if cvd_slope < 0 else 'стабильна'}"
+            return msg
         elif intent == "distributing":
             if delta_abs > 50:
-                return f"📉 СИЛЬНОЕ РАСПРЕДЕЛЕНИЕ - крупные игроки активно продают (дельта: {delta:.2f})"
+                msg = f"📉 СИЛЬНОЕ РАСПРЕДЕЛЕНИЕ - крупные игроки активно продают"
             else:
-                return f"📉 Распределение позиций - крупные игроки постепенно продают (дельта: {delta:.2f})"
+                msg = f"📉 Распределение позиций - крупные игроки постепенно продают"
+            msg += f"\n   • Дельта (краткосрочно): {delta:+.2f}"
+            if cvd is not None:
+                msg += f"\n   • CVD (накопительная): {cvd:+.2f}"
+            if cvd_slope is not None:
+                msg += f"\n   • CVD slope: {cvd_slope:+.2f} — {'падает' if cvd_slope < 0 else 'растёт' if cvd_slope > 0 else 'стабильна'}"
+            return msg
         else:
-            return f"❓ Намерения неясны - дельта: {delta:.2f}"
+            msg = f"❓ Намерения неясны"
+            msg += f"\n   • Дельта (краткосрочно): {delta:+.2f}"
+            if cvd is not None:
+                msg += f"\n   • CVD (накопительная): {cvd:+.2f}"
+            return msg
 
     @staticmethod
     def explain_rsi(rsi):
@@ -117,8 +133,10 @@ class RussianExplainer:
         # SVD
         svd_intent = svd_data.get('intent', 'unclear')
         delta = svd_data.get('delta', 0)
+        cvd = svd_data.get('cvd', None)
+        cvd_slope = svd_data.get('cvd_slope', None)
         parts.append(f"\n🧠 УМНЫЕ ДЕНЬГИ:")
-        parts.append(f"   {RussianExplainer.explain_svd_intent(svd_intent, delta)}")
+        parts.append(f"   {RussianExplainer.explain_svd_intent(svd_intent, delta, cvd, cvd_slope)}")
         # Доп. признаки манипуляций/потока
         dom = svd_data.get("dom_imbalance", {})
         thin = svd_data.get("thin_zones", {})

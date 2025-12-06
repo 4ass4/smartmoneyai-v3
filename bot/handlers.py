@@ -258,7 +258,9 @@ class BotHandlers:
             message_parts.append(f"• Структура: {structure_data.get('trend', 'unknown')}")
             message_parts.append(f"• Ликвидность: {liquidity_data.get('direction', {}).get('direction', 'neutral')}")
             message_parts.append(f"• SVD Intent: {svd_data.get('intent', 'unclear')}")
-            message_parts.append(f"• Delta: {svd_data.get('delta', 0):.2f}")
+            message_parts.append(f"• Delta (краткосрочно): {svd_data.get('delta', 0):.2f}")
+            message_parts.append(f"• CVD (накопительная): {svd_data.get('cvd', 0):.2f}")
+            message_parts.append(f"• CVD slope: {svd_data.get('cvd_slope', 0):.2f}")
             message_parts.append(f"• RSI: {ta_data.get('rsi', 0):.1f}")
             
             # Отправляем сообщение (разбиваем если слишком длинное)
