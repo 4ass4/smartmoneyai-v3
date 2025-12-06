@@ -402,6 +402,30 @@ class DecisionEngine:
             import logging
             logger = logging.getLogger(__name__)
             logger.info(f"   📉 Штраф за качество данных: -{quality_penalty:.2f} (quality: {overall_quality:.2f})")
+        
+        # Volume Profile корректировки
+        va_position = signals.get("liquidity", {}).get("va_position", "unknown")
+        poc_info = signals.get("liquidity", {}).get("poc_info", {})
+        signal_dir = signals.get("signal")
+        
+        # Если цена выше VAH и сигнал BUY — бычий подтверждение
+        if va_position == "above_vah" and signal_dir == "BUY":
+            final_confidence += 0.3
+        # Если цена ниже VAL и сигнал SELL — медвежий подтверждение
+        elif va_position == "below_val" and signal_dir == "SELL":
+            final_confidence += 0.3
+        # Если цена в Value Area — нейтрально (небольшой штраф за неопределенность)
+        elif va_position == "in_value_area":
+            final_confidence -= 0.1
+        
+        # PoC магнит: если цена близко к PoC — риск разворота
+        if poc_info.get("near_poc", False):
+            final_confidence -= 0.2  # Возможен разворот у PoC
+        # PoC как поддержка/сопротивление
+        if poc_info.get("poc_acts_as") == "support" and signal_dir == "BUY":
+            final_confidence += 0.2
+        elif poc_info.get("poc_acts_as") == "resistance" and signal_dir == "SELL":
+            final_confidence += 0.2
 
         return min(max(final_confidence, 0), 10)
     
