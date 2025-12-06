@@ -193,6 +193,23 @@ class BotHandlers:
                     message_parts.append(f"   Ближайшая: ${nearest_below['price']:.2f} (-{nearest_below['distance_pct']:.2f}%)")
                     message_parts.append(f"   Тип: {nearest_below['type']} ({nearest_below['source']})")
             
+            # Отработанные (swept) уровни - теперь зоны интереса китов
+            swept_levels = liq_analysis.get("swept_levels", [])
+            if swept_levels:
+                message_parts.append("")
+                message_parts.append("🎯 ОТРАБОТАННЫЕ УРОВНИ (зоны интереса китов):")
+                for swept in swept_levels[:5]:  # Показываем топ-5
+                    price = swept.get("price", 0)
+                    role = swept.get("role", "")
+                    count = swept.get("count", 1)
+                    distance = swept.get("distance_pct", 0)
+                    
+                    role_emoji = "🛡️" if role == "support" else "🚧"
+                    direction_text = "sweep вниз" if swept.get("direction") == "down" else "sweep вверх"
+                    
+                    message_parts.append(f"{role_emoji} ${price:.2f} ({distance:.2f}%) - {role}")
+                    message_parts.append(f"   {direction_text}, swept {count}x - стопы собраны, теперь зона интереса")
+            
             message_parts.append("")
             
             # Прогноз движения цены

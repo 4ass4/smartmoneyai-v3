@@ -73,12 +73,28 @@ def detect_sweep(df, lookback: int = 5, stop_prices_above=None, stop_prices_belo
         if last["close"] > lows.min() * 1.001:
             post_reversal = True
 
+    # Определяем swept цены (какие уровни были задеты)
+    swept_prices = []
+    if sweep_up:
+        swept_prices.append({
+            "price": highs.max(),
+            "direction": "up",
+            "hit_liquidity": hit_above
+        })
+    if sweep_down:
+        swept_prices.append({
+            "price": lows.min(),
+            "direction": "down",
+            "hit_liquidity": hit_below
+        })
+    
     return {
         "sweep_up": sweep_up,
         "sweep_down": sweep_down,
         "hit_liquidity_above": hit_above,
         "hit_liquidity_below": hit_below,
         "post_reversal": post_reversal,
-        "post_move": post_move
+        "post_move": post_move,
+        "swept_prices": swept_prices  # Список swept уровней для инвалидации
     }
 

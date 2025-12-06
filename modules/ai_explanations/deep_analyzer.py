@@ -24,7 +24,8 @@ class DeepMarketAnalyzer:
         analysis = {
             "above_price": [],
             "below_price": [],
-            "nearest_targets": {}
+            "nearest_targets": {},
+            "swept_levels": []  # Отработанные уровни (теперь зоны интереса)
         }
 
         # Анализ стоп-кластеров
@@ -76,6 +77,29 @@ class DeepMarketAnalyzer:
             analysis["nearest_targets"]["above"] = analysis["above_price"][0]
         if analysis["below_price"]:
             analysis["nearest_targets"]["below"] = analysis["below_price"][0]
+        
+        # Отработанные (swept) уровни - теперь это зоны интереса/support/resistance
+        swept_levels = liquidity_data.get("swept_levels", [])
+        for swept in swept_levels:
+            price = swept.get("price", 0)
+            direction = swept.get("direction", "")
+            count = swept.get("count", 1)
+            
+            # Определяем как работает swept уровень теперь
+            if price < current_price:
+                # Swept вниз → теперь это support
+                role = "support"
+            else:
+                # Swept вверх → теперь это resistance
+                role = "resistance"
+            
+            analysis["swept_levels"].append({
+                "price": price,
+                "direction": direction,
+                "count": count,
+                "role": role,
+                "distance_pct": abs((price - current_price) / current_price) * 100
+            })
 
         return analysis
 
