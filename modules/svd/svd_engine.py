@@ -68,21 +68,31 @@ class SVDEngine:
         cvd_slope = cvd_data["cvd_slope"]
         cvd_divergence = cvd_data["divergence"]
 
-        # Smart Money intent с ПРИОРИТЕТОМ НА CVD SLOPE (более важен, чем snapshot delta)
-        # CVD slope показывает РЕАЛЬНЫЙ тренд, а delta - только текущий момент
+        # Smart Money intent с учётом ОБЩЕГО CVD и CVD SLOPE
+        # CVD value показывает ОБЩИЙ тренд накопления/распределения
+        # CVD slope показывает НАПРАВЛЕНИЕ изменения (ускорение/замедление)
         
-        # Пороги для CVD slope (чтобы отфильтровать шум)
-        cvd_threshold = 0.5
+        # Пороги
+        cvd_threshold = 5.0  # Порог для значимого общего CVD
+        cvd_slope_threshold = 0.5  # Порог для значимого slope
         
-        # ПРИОРИТЕТ 1: CVD slope (если значимый)
-        if cvd_slope > cvd_threshold:
-            # CVD растёт → accumulating (даже если delta отрицательная краткосрочно)
+        # ПРИОРИТЕТ 1: Общий CVD (если значимый) - показывает ИТОГ действий китов
+        if abs(cvd_value) > cvd_threshold:
+            if cvd_value > 0:
+                # Общий CVD положительный → accumulating (даже если slope временно отрицательный)
+                intent = "accumulating"
+            else:
+                # Общий CVD отрицательный → distributing (даже если slope временно положительный)
+                intent = "distributing"
+        # ПРИОРИТЕТ 2: CVD slope (если общий CVD близок к 0)
+        elif cvd_slope > cvd_slope_threshold:
+            # CVD растёт → accumulating
             intent = "accumulating"
-        elif cvd_slope < -cvd_threshold:
-            # CVD падает → distributing (даже если delta положительная краткосрочно)
+        elif cvd_slope < -cvd_slope_threshold:
+            # CVD падает → distributing
             intent = "distributing"
+        # ПРИОРИТЕТ 3: snapshot delta + aggression (если оба CVD незначимы)
         else:
-            # ПРИОРИТЕТ 2: snapshot delta + aggression (если CVD slope близко к 0)
             if delta < 0 and aggression["sell_aggression"] > aggression["buy_aggression"]:
                 intent = "distributing"
             elif delta > 0 and aggression["buy_aggression"] > aggression["sell_aggression"]:
@@ -98,10 +108,22 @@ class SVDEngine:
         
         # CVD подтверждение: проверяем согласованность CVD slope с intent
         cvd_confirms_intent = False
-        if intent == "accumulating" and cvd_slope > 0:
-            cvd_confirms_intent = True
-        elif intent == "distributing" and cvd_slope < 0:
-            cvd_confirms_intent = True
+        is_pullback_or_bounce = False
+        
+        if intent == "accumulating":
+            if cvd_slope > 0:
+                cvd_confirms_intent = True  # Накопление ускоряется
+            elif cvd_slope < -cvd_slope_threshold and cvd_value > cvd_threshold:
+                # Накопление замедляется (pullback), но общий тренд накопление
+                is_pullback_or_bounce = True
+                cvd_confirms_intent = True  # Не штрафуем, это нормально
+        elif intent == "distributing":
+            if cvd_slope < 0:
+                cvd_confirms_intent = True  # Распределение ускоряется
+            elif cvd_slope > cvd_slope_threshold and cvd_value < -cvd_threshold:
+                # Распределение замедляется (bounce), но общий тренд распределение
+                is_pullback_or_bounce = True
+                cvd_confirms_intent = True  # Не штрафуем, это нормально
         elif intent == "unclear":
             cvd_confirms_intent = True  # Для unclear не штрафуем
 
@@ -217,6 +239,7 @@ class SVDEngine:
             "cvd_slope": cvd_slope,  # Наклон CVD (trend)
             "cvd_divergence": cvd_divergence,  # Дивергенция CVD с ценой
             "cvd_confirms_intent": cvd_confirms_intent,  # CVD подтверждает intent
+            "is_pullback_or_bounce": is_pullback_or_bounce,  # Накопление с откатом или распределение с отскоком
             "absorption": absorption,
             "aggression": aggression,
             "velocity": velocity,

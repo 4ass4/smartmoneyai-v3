@@ -289,13 +289,17 @@ class DeepMarketAnalyzer:
         # Намерения (с CVD для полной картины)
         cvd = svd_data.get("cvd", 0)
         cvd_slope = svd_data.get("cvd_slope", 0)
+        is_pullback = svd_data.get("is_pullback_or_bounce", False)
         
         if svd_intent == "accumulating":
             explanation.append("💰 УМНЫЕ ДЕНЬГИ НАКАПЛИВАЮТ:")
             explanation.append("• Крупные игроки постепенно покупают и скрывают интерес")
             explanation.append(f"• Дельта (краткосрочно): {delta:+.2f} — текущий перевес покупок")
             explanation.append(f"• CVD (накопительная): {cvd:+.2f} — общий тренд накопления")
-            explanation.append(f"• CVD slope: {cvd_slope:+.2f} — {'дельта растёт' if cvd_slope > 0 else 'дельта падает' if cvd_slope < 0 else 'дельта стабильна'}")
+            slope_desc = 'растёт' if cvd_slope > 0 else 'падает' if cvd_slope < 0 else 'стабильна'
+            explanation.append(f"• CVD slope: {cvd_slope:+.2f} — дельта {slope_desc}")
+            if is_pullback and cvd_slope < 0:
+                explanation.append("• ⚠️ Краткосрочная пауза/коррекция в накоплении (возможны 2 сценария)")
             if direction == "up":
                 explanation.append("• Ликвидность сверху — готовятся тянуть цену к стопам покупателей")
             explanation.append("• Цель: собрать позиции перед потенциальным ростом")
@@ -304,7 +308,10 @@ class DeepMarketAnalyzer:
             explanation.append("• Крупные игроки продают, не показывая агрессию")
             explanation.append(f"• Дельта (краткосрочно): {delta:+.2f} — текущий перевес продаж")
             explanation.append(f"• CVD (накопительная): {cvd:+.2f} — общий тренд распределения")
-            explanation.append(f"• CVD slope: {cvd_slope:+.2f} — {'дельта падает' if cvd_slope < 0 else 'дельта растёт' if cvd_slope > 0 else 'дельта стабильна'}")
+            slope_desc = 'падает' if cvd_slope < 0 else 'растёт' if cvd_slope > 0 else 'стабильна'
+            explanation.append(f"• CVD slope: {cvd_slope:+.2f} — дельта {slope_desc}")
+            if is_pullback and cvd_slope > 0:
+                explanation.append("• ⚠️ Краткосрочный отскок в распределении (возможны 2 сценария)")
             if direction == "down":
                 explanation.append("• Ликвидность снизу — готовятся тянуть цену к стопам продавцов")
             explanation.append("• Цель: выгрузить позиции перед снижением")
@@ -489,8 +496,27 @@ class DeepMarketAnalyzer:
                     ]
                 })
             
-            # Вариант 2: Следить за свипом
-            if nearest_above or nearest_below:
+            # Вариант 2: Два сценария движения (свип или прямой ход)
+            is_pullback = svd_data.get("is_pullback_or_bounce", False)
+            if (nearest_above or nearest_below) and is_pullback:
+                # При pullback - показываем ОБА сценария
+                scenario_points = ["ДВА возможных сценария:"]
+                if svd_intent == "accumulating" and nearest_below:
+                    scenario_points.append(f"А) Свип вниз к ${nearest_below['price']:.2f} → разворот вверх (вероятность ~40%)")
+                    scenario_points.append(f"Б) Прямой рост без свипа (накопление завершено, вероятность ~40%)")
+                    scenario_points.append("В) Боковик/ожидание (вероятность ~20%)")
+                elif svd_intent == "distributing" and nearest_above:
+                    scenario_points.append(f"А) Свип вверх к ${nearest_above['price']:.2f} → разворот вниз (вероятность ~40%)")
+                    scenario_points.append(f"Б) Прямое падение без свипа (распределение завершено, вероятность ~40%)")
+                    scenario_points.append("В) Боковик/ожидание (вероятность ~20%)")
+                
+                recommendations.append({
+                    "variant": "2",
+                    "title": "Два сценария движения",
+                    "points": scenario_points
+                })
+            elif nearest_above or nearest_below:
+                # Обычный сценарий свипа
                 sweep_recommendations = ["Следить за движением цены к ликвидности:"]
                 if nearest_below:
                     sweep_recommendations.append(
@@ -514,26 +540,46 @@ class DeepMarketAnalyzer:
                     "points": sweep_recommendations
                 })
             
-            # Вариант 3: Дождаться подтверждений
+            # Вариант 3: Признаки реализации сценария (при pullback) или подтверждения (обычно)
             confirmation_points = []
-            if svd_intent == "accumulating":
-                confirmation_points.append(f"CVD начнёт расти (сейчас: {cvd_value:.2f}, slope: {cvd_slope:.2f})")
-                confirmation_points.append("Absorption на buy (киты поглощают селл-ордера)")
-                if spoof_confirmed:
-                    confirmation_points.append("Спуф исчезнет, но цена устоит (истинное накопление)")
-            elif svd_intent == "distributing":
-                confirmation_points.append(f"CVD начнёт падать (сейчас: {cvd_value:.2f}, slope: {cvd_slope:.2f})")
-                confirmation_points.append("Absorption на sell (киты поглощают бай-ордера)")
-                if spoof_confirmed:
-                    confirmation_points.append("Спуф исчезнет, и цена пойдёт вниз (истинное распределение)")
+            if is_pullback:
+                # При pullback - показываем как распознать какой сценарий реализуется
+                confirmation_points.append("Признаки СВИПА:")
+                if svd_intent == "accumulating":
+                    confirmation_points.append("• Фаза manipulation, спуф на bid, DOM chasing вниз")
+                    confirmation_points.append("• Цена приближается к нижней ликвидности (< 2%)")
+                else:
+                    confirmation_points.append("• Фаза manipulation, спуф на ask, DOM chasing вверх")
+                    confirmation_points.append("• Цена приближается к верхней ликвидности (< 2%)")
+                
+                confirmation_points.append("\nПризнаки ПРЯМОГО ДВИЖЕНИЯ:")
+                if svd_intent == "accumulating":
+                    confirmation_points.append("• CVD slope разворачивается вверх (> 0), absorption на buy")
+                    confirmation_points.append("• Фаза execution, aggressive buying растёт")
+                else:
+                    confirmation_points.append("• CVD slope разворачивается вниз (< 0), absorption на sell")
+                    confirmation_points.append("• Фаза execution, aggressive selling растёт")
             else:
-                confirmation_points.append("Дождаться чёткого SVD intent (accumulating или distributing)")
-                confirmation_points.append("CVD подтвердит направление")
+                # Обычные подтверждения
+                if svd_intent == "accumulating":
+                    confirmation_points.append(f"CVD начнёт расти (сейчас: {cvd_value:.2f}, slope: {cvd_slope:.2f})")
+                    confirmation_points.append("Absorption на buy (киты поглощают селл-ордера)")
+                    if spoof_confirmed:
+                        confirmation_points.append("Спуф исчезнет, но цена устоит (истинное накопление)")
+                elif svd_intent == "distributing":
+                    confirmation_points.append(f"CVD начнёт падать (сейчас: {cvd_value:.2f}, slope: {cvd_slope:.2f})")
+                    confirmation_points.append("Absorption на sell (киты поглощают бай-ордера)")
+                    if spoof_confirmed:
+                        confirmation_points.append("Спуф исчезнет, и цена пойдёт вниз (истинное распределение)")
+                else:
+                    confirmation_points.append("Дождаться чёткого SVD intent (accumulating или distributing)")
+                    confirmation_points.append("CVD подтвердит направление")
             
             if confirmation_points:
+                title = "Как распознать сценарий" if is_pullback else "Дождаться подтверждений"
                 recommendations.append({
                     "variant": "3",
-                    "title": "Дождаться подтверждений",
+                    "title": title,
                     "points": confirmation_points
                 })
         

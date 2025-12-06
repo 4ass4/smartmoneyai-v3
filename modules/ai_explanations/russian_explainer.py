@@ -30,7 +30,7 @@ class RussianExplainer:
         return explanations.get(direction, f"Направление: {direction}")
 
     @staticmethod
-    def explain_svd_intent(intent, delta, cvd=None, cvd_slope=None):
+    def explain_svd_intent(intent, delta, cvd=None, cvd_slope=None, is_pullback=False):
         """Объяснение намерений умных денег с CVD"""
         delta_abs = abs(delta)
         
@@ -43,7 +43,10 @@ class RussianExplainer:
             if cvd is not None:
                 msg += f"\n   • CVD (накопительная): {cvd:+.2f}"
             if cvd_slope is not None:
-                msg += f"\n   • CVD slope: {cvd_slope:+.2f} — {'растёт' if cvd_slope > 0 else 'падает' if cvd_slope < 0 else 'стабильна'}"
+                slope_desc = 'растёт' if cvd_slope > 0 else 'падает' if cvd_slope < 0 else 'стабильна'
+                msg += f"\n   • CVD slope: {cvd_slope:+.2f} — {slope_desc}"
+                if is_pullback and cvd_slope < 0:
+                    msg += "\n   ⚠️ Краткосрочная пауза/коррекция в накоплении (общий тренд накопление)"
             return msg
         elif intent == "distributing":
             if delta_abs > 50:
@@ -54,7 +57,10 @@ class RussianExplainer:
             if cvd is not None:
                 msg += f"\n   • CVD (накопительная): {cvd:+.2f}"
             if cvd_slope is not None:
-                msg += f"\n   • CVD slope: {cvd_slope:+.2f} — {'падает' if cvd_slope < 0 else 'растёт' if cvd_slope > 0 else 'стабильна'}"
+                slope_desc = 'падает' if cvd_slope < 0 else 'растёт' if cvd_slope > 0 else 'стабильна'
+                msg += f"\n   • CVD slope: {cvd_slope:+.2f} — {slope_desc}"
+                if is_pullback and cvd_slope > 0:
+                    msg += "\n   ⚠️ Краткосрочный отскок в распределении (общий тренд распределение)"
             return msg
         else:
             msg = f"❓ Намерения неясны"
@@ -135,8 +141,9 @@ class RussianExplainer:
         delta = svd_data.get('delta', 0)
         cvd = svd_data.get('cvd', None)
         cvd_slope = svd_data.get('cvd_slope', None)
+        is_pullback = svd_data.get('is_pullback_or_bounce', False)
         parts.append(f"\n🧠 УМНЫЕ ДЕНЬГИ:")
-        parts.append(f"   {RussianExplainer.explain_svd_intent(svd_intent, delta, cvd, cvd_slope)}")
+        parts.append(f"   {RussianExplainer.explain_svd_intent(svd_intent, delta, cvd, cvd_slope, is_pullback)}")
         # Доп. признаки манипуляций/потока
         dom = svd_data.get("dom_imbalance", {})
         thin = svd_data.get("thin_zones", {})
