@@ -88,7 +88,7 @@ def detect_recent_touches(df, liquidity_levels, lookback=20, tolerance_pct=0.2):
     }
 
 
-def filter_touched_levels(liquidity_levels, touched_levels, min_cooldown_candles=10):
+def filter_touched_levels(liquidity_levels, touched_levels, min_cooldown_candles=20):
     """
     Фильтрует уровни ликвидности - удаляет недавно коснутые
     
@@ -96,7 +96,8 @@ def filter_touched_levels(liquidity_levels, touched_levels, min_cooldown_candles
         liquidity_levels: полный список уровней
         touched_levels: список коснутых уровней (из detect_recent_touches)
         min_cooldown_candles: минимальное количество свечей после касания
-                             для повторного учёта уровня
+                             для повторного учёта уровня (default: 20)
+                             20 свечей на 5м = ~1.5 часа
     
     Returns:
         list: отфильтрованные уровни (без недавно коснутых)

@@ -75,8 +75,9 @@ class LiquidityEngine:
         
         # Помечаем touched levels в swept_tracker
         for touch in touched_stop_clusters["touched_levels"]:
-            # Если уровень был touched недавно (< 10 свечей) → считаем swept
-            if touch.get("candles_ago", 999) < 10:
+            # Если уровень был touched недавно (< 20 свечей) → считаем swept
+            # 20 свечей на 5м = ~1.5 часа (достаточно для обнаружения недавних касаний)
+            if touch.get("candles_ago", 999) < 20:
                 direction = "up" if touch["type"] == "buy_stops" else "down"
                 self.swept_tracker.mark_as_swept(
                     touch["price"],
@@ -88,7 +89,8 @@ class LiquidityEngine:
                            f"({touch['type']}, {touch['candles_ago']} свечей назад) → помечен как swept")
         
         for touch in touched_swing_levels["touched_levels"]:
-            if touch.get("candles_ago", 999) < 10:
+            # Если уровень был touched недавно (< 20 свечей) → считаем swept
+            if touch.get("candles_ago", 999) < 20:
                 direction = "up" if touch["type"] == "buy_stops" else "down"
                 self.swept_tracker.mark_as_swept(
                     touch["price"],
