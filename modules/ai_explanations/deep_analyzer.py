@@ -138,12 +138,15 @@ class DeepMarketAnalyzer:
         is_trap_scenario = False
         
         # Детекция trap scenario
-        if phase == "manipulation":
-            # Manipulation phase - высокая вероятность ловушки
-            if svd_intent == "accumulating" and liq_direction == "down":
-                is_trap_scenario = True  # Bear trap: свип вниз → разворот вверх
-            elif svd_intent == "distributing" and liq_direction == "up":
-                is_trap_scenario = True  # Bull trap: свип вверх → разворот вниз
+        # КРИТИЧНО: Если SVD Intent противоречит liquidity direction → это ВСЕГДА trap/sweep
+        # Не зависит от фазы! Киты ВСЕГДА используют ликвидность для sweep.
+        if svd_intent == "accumulating" and liq_direction == "down":
+            is_trap_scenario = True  # Bear trap: свип вниз → разворот вверх
+        elif svd_intent == "distributing" and liq_direction == "up":
+            is_trap_scenario = True  # Bull trap: свип вверх → разворот вниз
+        
+        # Дополнительная уверенность если фаза manipulation
+        trap_probability = "high" if phase == "manipulation" else "medium"
         
         # === КРАТКОСРОЧНЫЙ ПРОГНОЗ (1-4ч) ===
         # Цена идёт к ближайшей ликвидности (свип)
@@ -157,7 +160,7 @@ class DeepMarketAnalyzer:
                     "target": nearest_below["price"],
                     "distance_pct": nearest_below["distance_pct"],
                     "reason": f"Свип вниз к ${nearest_below['price']:.2f} (собрать стопы лонгов) перед разворотом вверх",
-                    "probability": "medium",
+                    "probability": trap_probability,  # high если manipulation, иначе medium
                     "timeframe": "1-4ч",
                     "is_sweep": True
                 }
@@ -168,7 +171,7 @@ class DeepMarketAnalyzer:
                     "target": nearest_above["price"],
                     "distance_pct": nearest_above["distance_pct"],
                     "reason": f"Свип вверх к ${nearest_above['price']:.2f} (собрать стопы шортов) перед разворотом вниз",
-                    "probability": "medium",
+                    "probability": trap_probability,  # high если manipulation, иначе medium
                     "timeframe": "1-4ч",
                     "is_sweep": True
                 }
@@ -550,15 +553,42 @@ class DeepMarketAnalyzer:
                 })
             elif nearest_above or nearest_below:
                 # Обычный сценарий свипа
-                sweep_recommendations = ["Следить за движением цены к ликвидности:"]
-                if nearest_below:
+                sweep_recommendations = [
+                    "⚠️ НЕ ТОРГОВАТЬ СЕЙЧАС! Ждать подтверждения свипа:",
+                    ""
+                ]
+                if svd_intent == "distributing" and nearest_above:
+                    # Киты распределяют - ожидаем свип вверх + разворот
                     sweep_recommendations.append(
-                        f"Если цена свипнет вниз к ${nearest_below['price']:.2f} и быстро вернётся → BUY signal (bear trap подтверждён)"
+                        f"Киты распределяют → ожидается свип UP к ${nearest_above['price']:.2f}"
                     )
-                if nearest_above:
                     sweep_recommendations.append(
-                        f"Если цена свипнет вверх к ${nearest_above['price']:.2f} и быстро вернётся → SELL signal (bull trap подтверждён)"
+                        f"⚠️ НЕ ПОКУПАТЬ на росте! Это ловушка (bull trap)"
                     )
+                    sweep_recommendations.append(
+                        f"✅ SELL если: свип вверх к ${nearest_above['price']:.2f} + быстрый возврат + CVD падает"
+                    )
+                elif svd_intent == "accumulating" and nearest_below:
+                    # Киты накапливают - ожидаем свип вниз + разворот
+                    sweep_recommendations.append(
+                        f"Киты накапливают → ожидается свип DOWN к ${nearest_below['price']:.2f}"
+                    )
+                    sweep_recommendations.append(
+                        f"⚠️ НЕ ПРОДАВАТЬ на падении! Это ловушка (bear trap)"
+                    )
+                    sweep_recommendations.append(
+                        f"✅ BUY если: свип вниз к ${nearest_below['price']:.2f} + быстрый возврат + CVD растёт"
+                    )
+                else:
+                    # Unclear intent - общие рекомендации
+                    if nearest_below:
+                        sweep_recommendations.append(
+                            f"Если цена свипнет вниз к ${nearest_below['price']:.2f} и быстро вернётся → BUY signal (bear trap подтверждён)"
+                        )
+                    if nearest_above:
+                        sweep_recommendations.append(
+                            f"Если цена свипнет вверх к ${nearest_above['price']:.2f} и быстро вернётся → SELL signal (bull trap подтверждён)"
+                        )
                 
                 if spoof_confirmed:
                     spoof_side = svd_data.get("spoof_wall", {}).get("side", "unknown")
