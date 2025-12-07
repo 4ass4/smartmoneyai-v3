@@ -265,3 +265,6 @@ stop_clusters = self.swept_tracker.filter_swept_levels(stop_clusters, tolerance_
 
 **Дата:** 6 декабря 2025
 
+
+
+

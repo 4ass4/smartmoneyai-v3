@@ -80,3 +80,6 @@ class TestConflictDetector:
         # Должен быть major конфликт
         assert any(c["type"] == "signal_vs_dom" for c in result["conflicts"])
 
+
+
+

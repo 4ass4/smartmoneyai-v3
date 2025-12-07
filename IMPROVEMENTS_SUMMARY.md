@@ -168,3 +168,6 @@ modules/liquidity/liquidity_engine.py # Volume Profile integration
 
 **Все изменения запушены на GitHub:** https://github.com/4ass4/smartmoneyai-v3
 
+
+
+

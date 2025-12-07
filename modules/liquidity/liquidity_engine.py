@@ -68,10 +68,12 @@ class LiquidityEngine:
                 logger.info(f"🎯 Исторический sweep обнаружен: ${hist_sweep['price']:.2f} "
                            f"({hist_sweep['direction']}, {hist_sweep['candles_ago']} свечей назад)")
         
-        # НОВОЕ: Обнаружение недавно коснутых уровней (последние 20 свечей)
-        # Это решает проблему когда цена УЖЕ коснулась уровня, но sweep detector не поймал
-        touched_stop_clusters = detect_recent_touches(df, stop_clusters, lookback=20, tolerance_pct=0.2)
-        touched_swing_levels = detect_recent_touches(df, swing_levels, lookback=20, tolerance_pct=0.2)
+        # НОВОЕ: Обнаружение недавно коснутых уровней
+        # Используем ВСЕ доступные свечи (обычно 100 на 5м = 8.3 часов)
+        # Это решает проблему когда цена коснулась уровня даже несколько часов назад
+        max_lookback = min(len(df) - 3, 100)  # Используем все доступные (максимум 100)
+        touched_stop_clusters = detect_recent_touches(df, stop_clusters, lookback=max_lookback, tolerance_pct=0.2)
+        touched_swing_levels = detect_recent_touches(df, swing_levels, lookback=max_lookback, tolerance_pct=0.2)
         
         # Помечаем touched levels в swept_tracker
         for touch in touched_stop_clusters["touched_levels"]:

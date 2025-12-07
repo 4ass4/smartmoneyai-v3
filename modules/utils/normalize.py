@@ -98,3 +98,6 @@ def get_sweep_threshold(atr_pct, base_threshold=0.15):
     # Свип должен быть минимум base_threshold * ATR
     return atr_pct * base_threshold
 
+
+
+

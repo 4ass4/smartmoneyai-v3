@@ -160,3 +160,6 @@ class HealthMonitor:
         
         logger.info(f"{icon} Status: {status['status']}, Uptime: {status['uptime_hours']:.1f}h, Signals: {status['signal_count']}, API Success: {status['api_success_rate']:.1%}")
 
+
+
+

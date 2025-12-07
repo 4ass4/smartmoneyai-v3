@@ -9,13 +9,14 @@ import numpy as np
 import pandas as pd
 
 
-def calculate_trend_strength(df, lookback=20):
+def calculate_trend_strength(df, lookback=20, multi_period=False):
     """
     Рассчитывает силу текущего тренда
     
     Args:
         df: OHLCV DataFrame
         lookback: период для анализа (default: 20)
+        multi_period: если True, анализирует несколько периодов (20, 50, 100)
     
     Returns:
         dict: {
@@ -23,7 +24,8 @@ def calculate_trend_strength(df, lookback=20):
             "strength": 0.0-1.0,  # 0 = нет тренда, 1 = очень сильный
             "momentum": float,  # скорость изменения цены
             "consistency": 0.0-1.0,  # насколько последовательный тренд
-            "volume_confirmation": bool  # подтверждается ли объёмом
+            "volume_confirmation": bool,  # подтверждается ли объёмом
+            "multi_period": dict  # анализ на разных периодах (если multi_period=True)
         }
     """
     if df is None or len(df) < lookback:
@@ -32,7 +34,8 @@ def calculate_trend_strength(df, lookback=20):
             "strength": 0.0,
             "momentum": 0.0,
             "consistency": 0.0,
-            "volume_confirmation": False
+            "volume_confirmation": False,
+            "multi_period": {}
         }
     
     recent = df.iloc[-lookback:]
@@ -75,6 +78,70 @@ def calculate_trend_strength(df, lookback=20):
     # Комбинация momentum, consistency и volume
     momentum_score = min(abs(price_change_pct) / 5.0, 1.0)  # 5% = max strength
     
+    strength = (
+        momentum_score * 0.5 +  # 50% - momentum
+        consistency * 0.3 +     # 30% - consistency
+        (0.2 if volume_confirmation else 0.0)  # 20% - volume
+    )
+    
+    result = {
+        "direction": direction,
+        "strength": min(strength, 1.0),
+        "momentum": price_change_pct,
+        "consistency": consistency,
+        "volume_confirmation": volume_confirmation,
+        "multi_period": {}
+    }
+    
+    # Если multi_period=True, добавляем анализ на разных периодах
+    if multi_period:
+        periods = {}
+        for period in [20, 50, 100]:
+            if len(df) >= period:
+                period_result = _calculate_single_period(df, period)
+                periods[f"{period}candles"] = period_result
+        result["multi_period"] = periods
+    
+    return result
+
+
+def _calculate_single_period(df, lookback):
+    """Внутренняя функция для анализа на одном периоде"""
+    recent = df.iloc[-lookback:]
+    
+    # 1. Momentum (скорость изменения цены)
+    first_close = recent["close"].iloc[0]
+    last_close = recent["close"].iloc[-1]
+    price_change_pct = ((last_close - first_close) / first_close) * 100
+    
+    # 2. Trend direction
+    if price_change_pct > 1.0:
+        direction = "up"
+    elif price_change_pct < -1.0:
+        direction = "down"
+    else:
+        direction = "neutral"
+    
+    # 3. Consistency (насколько последовательно движется цена)
+    closes = recent["close"].values
+    price_diffs = np.diff(closes)
+    
+    if direction == "up":
+        trend_candles = np.sum(price_diffs > 0)
+    elif direction == "down":
+        trend_candles = np.sum(price_diffs < 0)
+    else:
+        trend_candles = 0
+    
+    consistency = trend_candles / len(price_diffs) if len(price_diffs) > 0 else 0.0
+    
+    # 4. Volume confirmation
+    avg_volume = recent["volume"].mean()
+    recent_volume = recent["volume"].iloc[-5:].mean()  # Последние 5 свечей
+    volume_confirmation = recent_volume > avg_volume * 1.1  # +10% объём
+    
+    # 5. Strength (сила тренда)
+    momentum_score = min(abs(price_change_pct) / 5.0, 1.0)  # 5% = max strength
     strength = (
         momentum_score * 0.5 +  # 50% - momentum
         consistency * 0.3 +     # 30% - consistency

@@ -45,3 +45,6 @@ def calculate_atr_pct(df, period=14):
     atr_pct = (atr / df['close']) * 100
     return atr_pct
 
+
+
+

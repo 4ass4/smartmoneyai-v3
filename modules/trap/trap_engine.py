@@ -229,3 +229,6 @@ class TrapEngine:
             "reason": "Trap не влияет на текущий сигнал"
         }
 
+
+
+

@@ -143,11 +143,12 @@ class DeepMarketAnalyzer:
         # Получаем df для анализа тренда
         df = structure_data.get("df")
         
-        # Анализ силы тренда
-        trend_analysis = calculate_trend_strength(df, lookback=20) if df is not None else {
+        # Анализ силы тренда на НЕСКОЛЬКИХ периодах (используем все доступные свечи!)
+        trend_analysis = calculate_trend_strength(df, lookback=20, multi_period=True) if df is not None else {
             "direction": "neutral",
             "strength": 0.0,
-            "momentum": 0.0
+            "momentum": 0.0,
+            "multi_period": {}
         }
         
         # Подсчёт целей ликвидности
@@ -338,10 +339,17 @@ class DeepMarketAnalyzer:
             # КРИТИЧЕСКАЯ ПРОВЕРКА: Execution фаза + сильный тренд вверх + цели сверху?
             # Если да → это pullback в сильном тренде, НЕ разворот!
             
+            # Проверяем тренд на РАЗНЫХ ПЕРИОДАХ (краткосрочный vs долгосрочный)
+            long_term_trend = trend_analysis.get("multi_period", {}).get("100candles", {})
+            medium_term_trend = trend_analysis.get("multi_period", {}).get("50candles", {})
+            
+            # Сильный тренд если:
+            # 1. Долгосрочный (100 свечей) тренд вверх
+            # 2. Или средний (50 свечей) тренд вверх + цели сверху
             is_strong_uptrend = (
-                trend_analysis["direction"] == "up" and 
-                trend_analysis["strength"] > 0.5 and
-                liq_targets["primary_direction"] == "up"
+                (long_term_trend.get("direction") == "up" and long_term_trend.get("strength", 0) > 0.5) or
+                (trend_analysis["direction"] == "up" and trend_analysis["strength"] > 0.5 and
+                 liq_targets["primary_direction"] == "up")
             )
             
             is_execution_continuation = (

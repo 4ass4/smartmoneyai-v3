@@ -446,3 +446,4 @@ if confidence < MIN_CONFIDENCE_TO_TRADE and direction != "WAIT":
 
 **Дата:** 7 декабря 2025
 
+

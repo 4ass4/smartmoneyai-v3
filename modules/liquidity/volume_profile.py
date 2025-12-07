@@ -177,3 +177,6 @@ def get_poc_significance(current_price, volume_profile, threshold_pct=0.5):
         "poc_acts_as": poc_acts_as
     }
 
+
+
+

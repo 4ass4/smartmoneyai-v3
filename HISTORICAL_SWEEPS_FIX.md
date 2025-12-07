@@ -331,3 +331,6 @@ self.swept_tracker = SweptLevelsTracker(expiry_hours=24)  # default: 24 часа
 
 **Дата:** 6 декабря 2025
 
+
+
+
