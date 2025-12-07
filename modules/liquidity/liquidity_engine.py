@@ -5,6 +5,7 @@ from .liquidity_direction import detect_liquidity_direction
 from .sweep_detector import detect_sweep, detect_historical_sweeps, detect_breakout
 from .volume_profile import calculate_volume_profile, get_position_relative_to_value_area, get_poc_significance
 from .swept_tracker import SweptLevelsTracker
+from .touch_detector import detect_recent_touches, filter_touched_levels
 import logging
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,37 @@ class LiquidityEngine:
                 logger.info(f"🎯 Исторический sweep обнаружен: ${hist_sweep['price']:.2f} "
                            f"({hist_sweep['direction']}, {hist_sweep['candles_ago']} свечей назад)")
         
+        # НОВОЕ: Обнаружение недавно коснутых уровней (последние 20 свечей)
+        # Это решает проблему когда цена УЖЕ коснулась уровня, но sweep detector не поймал
+        touched_stop_clusters = detect_recent_touches(df, stop_clusters, lookback=20, tolerance_pct=0.2)
+        touched_swing_levels = detect_recent_touches(df, swing_levels, lookback=20, tolerance_pct=0.2)
+        
+        # Помечаем touched levels в swept_tracker
+        for touch in touched_stop_clusters["touched_levels"]:
+            # Если уровень был touched недавно (< 10 свечей) → считаем swept
+            if touch.get("candles_ago", 999) < 10:
+                direction = "up" if touch["type"] == "buy_stops" else "down"
+                self.swept_tracker.mark_as_swept(
+                    touch["price"],
+                    direction,
+                    reason="recent_touch",
+                    candles_ago=touch["candles_ago"]
+                )
+                logger.info(f"🎯 Недавнее касание обнаружено: ${touch['price']:.2f} "
+                           f"({touch['type']}, {touch['candles_ago']} свечей назад) → помечен как swept")
+        
+        for touch in touched_swing_levels["touched_levels"]:
+            if touch.get("candles_ago", 999) < 10:
+                direction = "up" if touch["type"] == "buy_stops" else "down"
+                self.swept_tracker.mark_as_swept(
+                    touch["price"],
+                    direction,
+                    reason="recent_touch",
+                    candles_ago=touch["candles_ago"]
+                )
+                logger.info(f"🎯 Недавнее касание swing level: ${touch['price']:.2f} "
+                           f"({touch['type']}, {touch['candles_ago']} свечей назад) → помечен как swept")
+        
         # Фильтруем swept уровни из stop_clusters и swing_liquidity
         stop_clusters = self.swept_tracker.filter_swept_levels(stop_clusters, tolerance_pct=0.5)
         swing_levels = self.swept_tracker.filter_swept_levels(swing_levels, tolerance_pct=0.5)
@@ -108,12 +140,19 @@ class LiquidityEngine:
         # Получаем список всех swept (отработанных) уровней
         swept_levels = self.swept_tracker.get_all_swept()
         
+        # Объединяем все touched levels
+        all_touched_levels = (
+            touched_stop_clusters.get("touched_levels", []) + 
+            touched_swing_levels.get("touched_levels", [])
+        )
+        
         return {
             "stop_clusters": stop_clusters,
             "swing_liquidity": swing_levels,
             "ath_atl": ath_atl,
             "sweeps": sweeps,
             "swept_levels": swept_levels,  # Отработанные уровни (теперь зоны интереса/support/resistance)
+            "touched_levels": all_touched_levels,  # Недавно коснутые уровни
             "breakout_up": breakout_up,  # Обнаружение breakout вверх
             "breakout_down": breakout_down,  # Обнаружение breakout вниз
             "direction": direction,
