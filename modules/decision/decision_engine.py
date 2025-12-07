@@ -146,8 +146,9 @@ class DecisionEngine:
         confidence = min(max(confidence, 0), 10)
         
         # ПРИНУДИТЕЛЬНЫЙ WAIT для низкой уверенности
-        # Если уверенность < 5.0 → слишком неопределенно для торговли
-        MIN_CONFIDENCE_TO_TRADE = 5.0
+        # Если уверенность < 6.5 → слишком неопределенно для торговли
+        # КРИТИЧНО: Синхронизировано с risk_filters.py (MIN_CONFIDENCE = 6.5)
+        MIN_CONFIDENCE_TO_TRADE = 6.5
         if confidence < MIN_CONFIDENCE_TO_TRADE and direction != "WAIT":
             import logging
             logger = logging.getLogger(__name__)
