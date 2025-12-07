@@ -323,37 +323,38 @@ class DeepMarketAnalyzer:
                 if atl < current_price:
                     forecast["long_term"] = {
                         "direction": "DOWN",
-                            "target": atl,
-                            "distance_pct": ((current_price - atl) / current_price) * 100,
-                            "reason": f"Умные деньги распределяют - цель ATL ${atl:.2f}",
-                            "probability": "medium",
-                            "timeframe": "1-7д"
-                        }
-            else:
-                # Fallback: используем ATH/ATL based on structure
-                ath_atl = liquidity_data.get("ath_atl", {})
-                if ath_atl:
-                    ath = ath_atl.get("ath", {}).get("price", 0)
-                    atl = ath_atl.get("atl", {}).get("price", 0)
-                    
-                    if trend == "bullish" and ath > current_price:
-                        forecast["long_term"] = {
-                            "direction": "UP",
-                            "target": ath,
-                            "distance_pct": ((ath - current_price) / current_price) * 100,
-                            "reason": f"Бычий тренд - цель ATH ${ath:.2f}",
-                            "probability": "medium",
-                            "timeframe": "1-7д"
-                        }
-                    elif trend == "bearish" and atl < current_price:
-                        forecast["long_term"] = {
-                            "direction": "DOWN",
-                            "target": atl,
-                            "distance_pct": ((current_price - atl) / current_price) * 100,
-                            "reason": f"Медвежий тренд - цель ATL ${atl:.2f}",
-                            "probability": "medium",
-                            "timeframe": "1-7д"
-                        }
+                        "target": atl,
+                        "distance_pct": ((current_price - atl) / current_price) * 100,
+                        "reason": f"Умные деньги распределяют - цель ATL ${atl:.2f}",
+                        "probability": "medium",
+                        "timeframe": "1-7д"
+                    }
+        
+        # Fallback для всех случаев: если нет long_term прогноза, используем ATH/ATL based on structure
+        if not forecast.get("long_term"):
+            ath_atl = liquidity_data.get("ath_atl", {})
+            if ath_atl:
+                ath = ath_atl.get("ath", {}).get("price", 0)
+                atl = ath_atl.get("atl", {}).get("price", 0)
+                
+                if trend == "bullish" and ath > current_price:
+                    forecast["long_term"] = {
+                        "direction": "UP",
+                        "target": ath,
+                        "distance_pct": ((ath - current_price) / current_price) * 100,
+                        "reason": f"Бычий тренд - цель ATH ${ath:.2f}",
+                        "probability": "medium",
+                        "timeframe": "1-7д"
+                    }
+                elif trend == "bearish" and atl < current_price:
+                    forecast["long_term"] = {
+                        "direction": "DOWN",
+                        "target": atl,
+                        "distance_pct": ((current_price - atl) / current_price) * 100,
+                        "reason": f"Медвежий тренд - цель ATL ${atl:.2f}",
+                        "probability": "medium",
+                        "timeframe": "1-7д"
+                    }
 
         return forecast
 
