@@ -378,7 +378,16 @@ class DecisionEngine:
         # CVD (Cumulative Volume Delta) подтверждение
         cvd_confirms = signals["svd"].get("cvd_confirms_intent", False)
         cvd_divergence = signals["svd"].get("cvd_divergence", False)
+        cvd_reversal = signals["svd"].get("cvd_reversal_detected", False)
         cvd_slope = signals["svd"].get("cvd_slope", 0)
+        cvd_value = signals["svd"].get("cvd", 0)
+        
+        # РАЗВОРОТ ТРЕНДА — сильный бонус за ранний вход
+        if cvd_reversal:
+            base_confidence += 1.5  # Большой бонус за обнаружение разворота
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"🔄 РАЗВОРОТ ТРЕНДА: CVD={cvd_value:.1f}, slope={cvd_slope:.1f} → бонус +1.5")
         
         # Если CVD подтверждает intent — бонус
         if cvd_confirms:
@@ -436,6 +445,32 @@ class DecisionEngine:
         # Если был пост-реверсал после свипа в сторону сигнала — еще бонус
         if sweeps.get("post_reversal") and signals.get("signal") in ("BUY", "SELL"):
             final_confidence += 0.2
+        
+        # BREAKOUT (медленный пробой) — сильный бонус
+        breakout_up = signals.get("liquidity", {}).get("breakout_up", {})
+        breakout_down = signals.get("liquidity", {}).get("breakout_down", {})
+        
+        if breakout_up.get("breakout_up") and signals.get("signal") == "BUY":
+            # Сильный breakout (все свечи выше) = больший бонус
+            if breakout_up.get("strong_breakout"):
+                final_confidence += 1.0
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"📈 СИЛЬНЫЙ BREAKOUT UP: консолидация {breakout_up['consolidation_candles']} свечей → бонус +1.0")
+            # Слабый breakout (большинство свечей выше)
+            elif breakout_up.get("weak_breakout"):
+                final_confidence += 0.5
+        
+        if breakout_down.get("breakout_down") and signals.get("signal") == "SELL":
+            # Сильный breakout (все свечи ниже) = больший бонус
+            if breakout_down.get("strong_breakout"):
+                final_confidence += 1.0
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"📉 СИЛЬНЫЙ BREAKOUT DOWN: консолидация {breakout_down['consolidation_candles']} свечей → бонус +1.0")
+            # Слабый breakout (большинство свечей ниже)
+            elif breakout_down.get("weak_breakout"):
+                final_confidence += 0.5
         
         # Штраф за низкое качество данных
         data_quality = signals.get("data_quality", {})

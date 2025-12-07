@@ -2,7 +2,7 @@ from .stop_clusters import detect_stop_clusters
 from .swing_liquidity import detect_swing_liquidity
 from .ath_atl import detect_ath_atl_liquidity
 from .liquidity_direction import detect_liquidity_direction
-from .sweep_detector import detect_sweep, detect_historical_sweeps
+from .sweep_detector import detect_sweep, detect_historical_sweeps, detect_breakout
 from .volume_profile import calculate_volume_profile, get_position_relative_to_value_area, get_poc_significance
 from .swept_tracker import SweptLevelsTracker
 import logging
@@ -73,6 +73,29 @@ class LiquidityEngine:
         
         direction = detect_liquidity_direction(stop_clusters, swing_levels, ath_atl, df)
         
+        # Обнаружение breakout (медленный пробой) для ближайших уровней ликвидности
+        breakout_up = {"breakout_up": False}
+        breakout_down = {"breakout_down": False}
+        
+        if current_price:
+            # Проверяем breakout для ближайшего уровня сверху
+            if direction.get("direction") == "up" and direction.get("nearest_up"):
+                nearest_level_up = direction["nearest_up"]["price"]
+                breakout_up = detect_breakout(df, nearest_level_up, direction="up", lookback=3)
+                if breakout_up["breakout_up"]:
+                    logger.info(f"📈 BREAKOUT UP обнаружен: ${nearest_level_up:.2f}, "
+                               f"consolidation: {breakout_up['consolidation_candles']} свечей, "
+                               f"strong: {breakout_up['strong_breakout']}")
+            
+            # Проверяем breakout для ближайшего уровня снизу
+            if direction.get("direction") == "down" and direction.get("nearest_down"):
+                nearest_level_down = direction["nearest_down"]["price"]
+                breakout_down = detect_breakout(df, nearest_level_down, direction="down", lookback=3)
+                if breakout_down["breakout_down"]:
+                    logger.info(f"📉 BREAKOUT DOWN обнаружен: ${nearest_level_down:.2f}, "
+                               f"consolidation: {breakout_down['consolidation_candles']} свечей, "
+                               f"strong: {breakout_down['strong_breakout']}")
+        
         # Volume Profile - распределение объёмов по ценам
         volume_profile = calculate_volume_profile(df, num_bins=50)
         
@@ -91,6 +114,8 @@ class LiquidityEngine:
             "ath_atl": ath_atl,
             "sweeps": sweeps,
             "swept_levels": swept_levels,  # Отработанные уровни (теперь зоны интереса/support/resistance)
+            "breakout_up": breakout_up,  # Обнаружение breakout вверх
+            "breakout_down": breakout_down,  # Обнаружение breakout вниз
             "direction": direction,
             "volume_profile": volume_profile,
             "va_position": va_position,

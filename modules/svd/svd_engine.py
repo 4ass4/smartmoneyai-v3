@@ -75,15 +75,36 @@ class SVDEngine:
         # Пороги
         cvd_threshold = 5.0  # Порог для значимого общего CVD
         cvd_slope_threshold = 0.5  # Порог для значимого slope
+        cvd_reversal_threshold = 2.0  # Порог для обнаружения разворота (сильное изменение slope)
         
-        # ПРИОРИТЕТ 1: Общий CVD (если значимый) - показывает ИТОГ действий китов
-        if abs(cvd_value) > cvd_threshold:
-            if cvd_value > 0:
-                # Общий CVD положительный → accumulating (даже если slope временно отрицательный)
+        # ОБНАРУЖЕНИЕ РАЗВОРОТА ТРЕНДА (высокий приоритет!)
+        # Если общий CVD отрицательный, НО slope сильно положительный → начало разворота вверх
+        # Если общий CVD положительный, НО slope сильно отрицательный → начало разворота вниз
+        reversal_detected = False
+        
+        if abs(cvd_value) > cvd_threshold:  # Есть значимый общий CVD
+            # Разворот вверх: CVD отрицательный, но slope сильно положительный
+            if cvd_value < 0 and cvd_slope > cvd_reversal_threshold:
+                intent = "accumulating"  # Начало разворота вверх
+                reversal_detected = True
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"🔄 РАЗВОРОТ ВВЕРХ: CVD={cvd_value:.1f} (отриц.), slope={cvd_slope:.1f} (растёт)")
+            
+            # Разворот вниз: CVD положительный, но slope сильно отрицательный
+            elif cvd_value > 0 and cvd_slope < -cvd_reversal_threshold:
+                intent = "distributing"  # Начало разворота вниз
+                reversal_detected = True
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"🔄 РАЗВОРОТ ВНИЗ: CVD={cvd_value:.1f} (полож.), slope={cvd_slope:.1f} (падает)")
+            
+            # Нет разворота: используем общий CVD
+            elif cvd_value > 0:
                 intent = "accumulating"
             else:
-                # Общий CVD отрицательный → distributing (даже если slope временно положительный)
                 intent = "distributing"
+        
         # ПРИОРИТЕТ 2: CVD slope (если общий CVD близок к 0)
         elif cvd_slope > cvd_slope_threshold:
             # CVD растёт → accumulating
@@ -91,6 +112,7 @@ class SVDEngine:
         elif cvd_slope < -cvd_slope_threshold:
             # CVD падает → distributing
             intent = "distributing"
+        
         # ПРИОРИТЕТ 3: snapshot delta + aggression (если оба CVD незначимы)
         else:
             if delta < 0 and aggression["sell_aggression"] > aggression["buy_aggression"]:
@@ -239,6 +261,7 @@ class SVDEngine:
             "cvd_slope": cvd_slope,  # Наклон CVD (trend)
             "cvd_divergence": cvd_divergence,  # Дивергенция CVD с ценой
             "cvd_confirms_intent": cvd_confirms_intent,  # CVD подтверждает intent
+            "cvd_reversal_detected": reversal_detected,  # Обнаружен разворот тренда
             "is_pullback_or_bounce": is_pullback_or_bounce,  # Накопление с откатом или распределение с отскоком
             "absorption": absorption,
             "aggression": aggression,
