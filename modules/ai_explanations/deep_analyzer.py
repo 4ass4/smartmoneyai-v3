@@ -4,6 +4,12 @@
 Глубокий анализ рынка с объяснением действий умных денег
 """
 
+from modules.utils.trend_strength import (
+    calculate_trend_strength,
+    analyze_pullback_vs_reversal,
+    count_liquidity_targets
+)
+
 
 class DeepMarketAnalyzer:
     """
@@ -132,6 +138,28 @@ class DeepMarketAnalyzer:
         
         nearest_above = liquidity_analysis.get("nearest_targets", {}).get("above")
         nearest_below = liquidity_analysis.get("nearest_targets", {}).get("below")
+        
+        # === АНАЛИЗ СИЛЫ ТРЕНДА И РАСПОЛОЖЕНИЯ ЛИКВИДНОСТИ ===
+        # Получаем df для анализа тренда
+        df = structure_data.get("df")
+        
+        # Анализ силы тренда
+        trend_analysis = calculate_trend_strength(df, lookback=20) if df is not None else {
+            "direction": "neutral",
+            "strength": 0.0,
+            "momentum": 0.0
+        }
+        
+        # Подсчёт целей ликвидности
+        liq_targets = count_liquidity_targets(liquidity_data, current_price)
+        
+        # Проверяем pullback vs reversal
+        pullback_analysis = analyze_pullback_vs_reversal(
+            df, trend_analysis["direction"], lookback=50
+        ) if df is not None and trend_analysis["direction"] != "neutral" else {
+            "is_pullback": False,
+            "is_reversal": False
+        }
         
         # Проверяем был ли недавний sweep (trap уже завершён?)
         sweeps = liquidity_data.get("sweeps", {})
@@ -307,28 +335,55 @@ class DeepMarketAnalyzer:
                 }
         
         elif svd_intent == "distributing" and cvd_value <= 0:
-            # Киты распределяют (CVD отрицательный или падает) → глобально ПАДЕНИЕ
-            if nearest_below:
+            # КРИТИЧЕСКАЯ ПРОВЕРКА: Execution фаза + сильный тренд вверх + цели сверху?
+            # Если да → это pullback в сильном тренде, НЕ разворот!
+            
+            is_strong_uptrend = (
+                trend_analysis["direction"] == "up" and 
+                trend_analysis["strength"] > 0.5 and
+                liq_targets["primary_direction"] == "up"
+            )
+            
+            is_execution_continuation = (
+                phase == "execution" and
+                trend_analysis["momentum"] > 0.5 and  # Положительный momentum
+                pullback_analysis.get("is_pullback", False)  # Это pullback, не разворот
+            )
+            
+            # Если execution + сильный тренд вверх + цели сверху → прогноз UP!
+            if (is_strong_uptrend or is_execution_continuation) and nearest_above:
+                forecast["long_term"] = {
+                    "direction": "UP",
+                    "target": nearest_above["price"],
+                    "distance_pct": nearest_above["distance_pct"],
+                    "reason": f"Pullback в сильном тренде (momentum: {trend_analysis['momentum']:.1f}%) - цель ${nearest_above['price']:.2f}",
+                    "probability": "high" if phase == "execution" else "medium",
+                    "timeframe": "1-7д",
+                    "context": "Отрицательный CVD = временная фиксация прибыли, не разворот"
+                }
+            # Иначе: киты распределяют → глобально ПАДЕНИЕ
+            elif nearest_below:
                 forecast["long_term"] = {
                     "direction": "DOWN",
                     "target": nearest_below["price"],
                     "distance_pct": nearest_below["distance_pct"],
                     "reason": f"Умные деньги распределяют (CVD: {cvd_value:.1f}) - цель ${nearest_below['price']:.2f}",
-                    "probability": "high" if (trap_completed or phase == "execution") else "medium",
+                    "probability": "high" if pullback_analysis.get("is_reversal", False) else "medium",
                     "timeframe": "1-7д"
                 }
             else:
-                # Fallback на ATL
-                atl = liquidity_data.get("ath_atl", {}).get("atl", {}).get("price", 0)
-                if atl < current_price:
-                    forecast["long_term"] = {
-                        "direction": "DOWN",
-                        "target": atl,
-                        "distance_pct": ((current_price - atl) / current_price) * 100,
-                        "reason": f"Умные деньги распределяют - цель ATL ${atl:.2f}",
-                        "probability": "medium",
-                        "timeframe": "1-7д"
-                    }
+                # Fallback на ATL только если это действительно разворот
+                if pullback_analysis.get("is_reversal", False):
+                    atl = liquidity_data.get("ath_atl", {}).get("atl", {}).get("price", 0)
+                    if atl < current_price:
+                        forecast["long_term"] = {
+                            "direction": "DOWN",
+                            "target": atl,
+                            "distance_pct": ((current_price - atl) / current_price) * 100,
+                            "reason": f"Умные деньги распределяют - цель ATL ${atl:.2f}",
+                            "probability": "medium",
+                            "timeframe": "1-7д"
+                        }
         
         # Fallback для всех случаев: если нет long_term прогноза, используем ATH/ATL based on structure
         if not forecast.get("long_term"):
