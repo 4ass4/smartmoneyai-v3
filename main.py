@@ -15,6 +15,7 @@ from modules.ta_engine.ta_engine import TAEngine
 from modules.decision.decision_engine import DecisionEngine
 from modules.utils.data_validator import DataQualityValidator
 from modules.utils.healthcheck import HealthMonitor
+from modules.alerts import AlertManager
 from bot.notifications import NotificationManager
 from bot.handlers import BotHandlers
 from telegram import Bot
@@ -43,6 +44,7 @@ async def main():
     notification_manager = NotificationManager(config)
     data_validator = DataQualityValidator(config)
     health_monitor = HealthMonitor()
+    alert_manager = AlertManager()  # Менеджер алертов для важных событий
     
     # Инициализация Telegram бота
     bot_token = config.TELEGRAM_BOT_TOKEN
@@ -210,6 +212,45 @@ async def main():
                 
                 # Записываем в healthcheck
                 health_monitor.record_signal(signal_type)
+                
+                # Проверка важных событий и генерация алертов
+                alerts = []
+                
+                # 1. Проверка смены фазы
+                phase_alert = alert_manager.check_phase_change(
+                    svd_data.get("phase", "discovery"),
+                    svd_data.get("phase_info", {})
+                )
+                if phase_alert:
+                    alerts.append(phase_alert)
+                
+                # 2. Проверка разворота CVD
+                cvd_alert = alert_manager.check_cvd_reversal(svd_data)
+                if cvd_alert:
+                    alerts.append(cvd_alert)
+                
+                # 3. Проверка execution фазы
+                execution_alert = alert_manager.check_execution_phase(
+                    svd_data.get("phase", "discovery"),
+                    svd_data,
+                    signal
+                )
+                if execution_alert:
+                    alerts.append(execution_alert)
+                
+                # 4. Проверка сильного сигнала
+                strong_signal_alert = alert_manager.check_strong_signal(signal)
+                if strong_signal_alert:
+                    alerts.append(strong_signal_alert)
+                
+                # Отправка алертов в Telegram
+                if alerts and handlers:
+                    for alert in alerts:
+                        alert_message = alert_manager.format_alert_for_telegram(alert)
+                        try:
+                            await handlers.send_alert(alert_message)
+                        except Exception as e:
+                            logger.error(f"Ошибка отправки алерта: {e}")
                 
                 # Отправка сигнала в Telegram с детальными данными
                 if signal and signal.get("signal") != "WAIT":
