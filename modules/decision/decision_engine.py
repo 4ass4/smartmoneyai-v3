@@ -145,6 +145,16 @@ class DecisionEngine:
         
         confidence = min(max(confidence, 0), 10)
         
+        # ПРИНУДИТЕЛЬНЫЙ WAIT для низкой уверенности
+        # Если уверенность < 5.0 → слишком неопределенно для торговли
+        MIN_CONFIDENCE_TO_TRADE = 5.0
+        if confidence < MIN_CONFIDENCE_TO_TRADE and direction != "WAIT":
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"⚠️ LOW CONFIDENCE: {confidence:.1f}/10 < {MIN_CONFIDENCE_TO_TRADE} "
+                         f"→ принудительно WAIT вместо {direction}")
+            direction = "WAIT"
+        
         # Генерация объяснения
         explanation = self._generate_explanation(signals, direction, confidence)
         
@@ -173,23 +183,28 @@ class DecisionEngine:
         """Определяет финальное направление на основе всех сигналов с учетом весов"""
         votes = {"BUY": 0, "SELL": 0, "WAIT": 0}
         
-        # Liquidity (вес 2 - самый важный для Smart Money)
-        liq_dir = signals["liquidity"].get("direction", {}).get("direction", "neutral")
-        if liq_dir == "up":
-            votes["BUY"] += 2
-        elif liq_dir == "down":
-            votes["SELL"] += 2
-        
-        # SVD (вес 1.5 - важен, но может быть противоречивым)
+        # SVD Intent (вес 3.0 - САМЫЙ ВАЖНЫЙ! Показывает что делают киты СЕЙЧАС)
         svd_intent = signals["svd"].get("intent", "unclear")
         svd_conf = signals["svd"].get("confidence", 0)
+        cvd_confirms = signals["svd"].get("cvd_confirms_intent", False)
+        
+        # Усиленный вес если CVD подтверждает intent
+        svd_weight = 3.0 if cvd_confirms else 2.5
+        
         if svd_intent == "accumulating" and svd_conf > 0:
-            votes["BUY"] += 1.5
+            votes["BUY"] += svd_weight
         elif svd_intent == "distributing" and svd_conf > 0:
-            votes["SELL"] += 1.5
+            votes["SELL"] += svd_weight
         elif svd_intent == "unclear":
             # Если SVD unclear, не добавляем голоса, но и не блокируем
             pass
+        
+        # Liquidity (вес 2.0 - показывает КУДА может пойти цена, но не ЧТО делают киты)
+        liq_dir = signals["liquidity"].get("direction", {}).get("direction", "neutral")
+        if liq_dir == "up":
+            votes["BUY"] += 2.0
+        elif liq_dir == "down":
+            votes["SELL"] += 2.0
         
         # Market Structure (вес 1)
         trend = signals["structure"].get("trend", "range")
@@ -205,6 +220,15 @@ class DecisionEngine:
         elif ta_trend == "bearish":
             votes["SELL"] += 0.5
         
+        # Логирование голосования для отладки
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"📊 ГОЛОСОВАНИЕ: BUY={votes['BUY']:.1f}, SELL={votes['SELL']:.1f}, WAIT={votes['WAIT']:.1f}")
+        logger.info(f"   • SVD Intent: {svd_intent} (вес: {svd_weight:.1f}, conf: {svd_conf:.1f}, CVD: {signals['svd'].get('cvd', 0):.1f})")
+        logger.info(f"   • Liquidity: {liq_dir} (вес: 2.0)")
+        logger.info(f"   • Structure: {trend} (вес: 1.0)")
+        logger.info(f"   • TA: {ta_trend} (вес: 0.5)")
+        
         # Определение победителя
         max_votes = max(votes.values())
         if max_votes == 0:
@@ -215,11 +239,30 @@ class DecisionEngine:
         if vote_diff < 1.0:
             return "WAIT"
         
+        winner = None
         for signal, count in votes.items():
             if count == max_votes:
-                return signal
+                winner = signal
+                break
         
-        return "WAIT"
+        # SVD INTENT VETO: Блокируем противоречивые сигналы
+        # Если киты распределяют (продают) → НЕЛЬЗЯ давать BUY
+        # Если киты накапливают (покупают) → НЕЛЬЗЯ давать SELL
+        if svd_intent == "distributing" and winner == "BUY" and svd_conf > 3:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"🚫 SVD VETO: Киты распределяют (CVD: {signals['svd'].get('cvd', 0):.1f}), "
+                         f"блокирую BUY → WAIT (votes: BUY={votes['BUY']:.1f}, SELL={votes['SELL']:.1f})")
+            return "WAIT"
+        
+        if svd_intent == "accumulating" and winner == "SELL" and svd_conf > 3:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"🚫 SVD VETO: Киты накапливают (CVD: {signals['svd'].get('cvd', 0):.1f}), "
+                         f"блокирую SELL → WAIT (votes: BUY={votes['BUY']:.1f}, SELL={votes['SELL']:.1f})")
+            return "WAIT"
+        
+        return winner if winner else "WAIT"
     
     def _calculate_confidence(self, signals):
         """Рассчитывает итоговый confidence (0-10) с учетом противоречий"""
