@@ -122,23 +122,6 @@ class SVDEngine:
             else:
                 intent = "unclear"
 
-        # КРИТИЧНО: Execution фаза → ПРИОРИТЕТ CVD slope!
-        # Если execution + CVD slope растёт → accumulating (даже если CVD negative)
-        # Если execution + CVD slope падает → distributing (даже если CVD positive)
-        if phase == "execution":
-            if cvd_slope > 1.0:  # Сильный рост CVD
-                if intent != "accumulating":
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.info(f"⚡ EXECUTION: CVD slope +{cvd_slope:.1f} → intent перезаписан на ACCUMULATING")
-                intent = "accumulating"
-            elif cvd_slope < -1.0:  # Сильное падение CVD
-                if intent != "distributing":
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.info(f"⚡ EXECUTION: CVD slope {cvd_slope:.1f} → intent перезаписан на DISTRIBUTING")
-                intent = "distributing"
-        
         # Усиливаем intent, если DOM подтверждает сторону
         if dom_imbalance.get("side") == "bid" and intent == "accumulating":
             intent = "accumulating"
@@ -270,6 +253,23 @@ class SVDEngine:
         phase = phase_info["phase"]
         phase_confidence = phase_info["phase_confidence"]
         phase_changed = phase_info["phase_changed"]
+        
+        # КРИТИЧНО: Execution фаза → ПРИОРИТЕТ CVD slope!
+        # Если execution + CVD slope растёт → accumulating (даже если CVD negative)
+        # Если execution + CVD slope падает → distributing (даже если CVD positive)
+        if phase == "execution":
+            if cvd_slope > 1.0:  # Сильный рост CVD
+                if intent != "accumulating":
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"⚡ EXECUTION: CVD slope +{cvd_slope:.1f} → intent перезаписан на ACCUMULATING")
+                intent = "accumulating"
+            elif cvd_slope < -1.0:  # Сильное падение CVD
+                if intent != "distributing":
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"⚡ EXECUTION: CVD slope {cvd_slope:.1f} → intent перезаписан на DISTRIBUTING")
+                intent = "distributing"
 
         return {
             "delta": delta,
