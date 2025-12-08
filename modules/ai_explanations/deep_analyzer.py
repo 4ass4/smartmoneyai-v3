@@ -394,7 +394,7 @@ class DeepMarketAnalyzer:
                         }
         
         # Fallback для всех случаев: если нет long_term прогноза, используем ATH/ATL based on structure
-        if not forecast.get("long_term"):
+        if not forecast.get("long_term") or not forecast["long_term"]:
             ath_atl = liquidity_data.get("ath_atl", {})
             if ath_atl:
                 ath = ath_atl.get("ath", {}).get("price", 0)
@@ -418,6 +418,39 @@ class DeepMarketAnalyzer:
                         "probability": "medium",
                         "timeframe": "1-7д"
                     }
+        
+        # ФИНАЛЬНЫЙ FALLBACK: Если всё ещё нет прогноза, используем SVD intent
+        if not forecast.get("long_term") or not forecast["long_term"]:
+            if svd_intent == "accumulating":
+                target = nearest_above["price"] if nearest_above else current_price * 1.02
+                forecast["long_term"] = {
+                    "direction": "UP",
+                    "target": target,
+                    "distance_pct": ((target - current_price) / current_price) * 100,
+                    "reason": f"Киты накапливают (CVD: {cvd_value:.1f})",
+                    "probability": "low",
+                    "timeframe": "1-7д"
+                }
+            elif svd_intent == "distributing":
+                target = nearest_below["price"] if nearest_below else current_price * 0.98
+                forecast["long_term"] = {
+                    "direction": "DOWN",
+                    "target": target,
+                    "distance_pct": ((current_price - target) / current_price) * 100,
+                    "reason": f"Киты распределяют (CVD: {cvd_value:.1f})",
+                    "probability": "low",
+                    "timeframe": "1-7д"
+                }
+            else:
+                # Последний fallback: хотя бы что-то!
+                forecast["long_term"] = {
+                    "direction": "NEUTRAL",
+                    "target": current_price,
+                    "distance_pct": 0,
+                    "reason": "Неопределённая ситуация, рекомендуется WAIT",
+                    "probability": "low",
+                    "timeframe": "1-7д"
+                }
 
         return forecast
 
@@ -617,7 +650,7 @@ class DeepMarketAnalyzer:
 
         return scenarios
 
-    def generate_actionable_recommendations(self, decision_result, svd_data, liquidity_data, structure_data, current_price):
+    def generate_actionable_recommendations(self, decision_result, svd_data, liquidity_data, structure_data, current_price, ta_data=None):
         """
         Генерация практических рекомендаций "Что делать сейчас"
         """
@@ -635,6 +668,23 @@ class DeepMarketAnalyzer:
         absorption = svd_data.get("absorption", {})
         spoof_confirmed = svd_data.get("spoof_confirmed", False)
         sweeps = liquidity_data.get("sweeps", {})
+        
+        # КРИТИЧНО: RSI Warnings (добавляем в самое начало!)
+        rsi = ta_data.get("rsi", 50) if ta_data else 50
+        if rsi < 15:
+            recommendations.insert(0, {
+                "variant": "⚠️ КРИТИЧНО",
+                "action": f"🚨 RSI {rsi:.1f} - ЭКСТРЕМАЛЬНАЯ ПЕРЕПРОДАННОСТЬ!",
+                "reason": "Готовьтесь к отскоку / НЕ ПРОДАВАТЬ!",
+                "confidence": "high"
+            })
+        elif rsi > 85:
+            recommendations.insert(0, {
+                "variant": "⚠️ КРИТИЧНО",
+                "action": f"🚨 RSI {rsi:.1f} - ЭКСТРЕМАЛЬНАЯ ПЕРЕКУПЛЕННОСТЬ!",
+                "reason": "Фиксируйте прибыль / НЕ ПОКУПАТЬ!",
+                "confidence": "high"
+            })
         
         # Определяем nearest liquidity
         liq_analysis = self.analyze_liquidity_zones(liquidity_data, structure_data, current_price)
@@ -895,7 +945,7 @@ class DeepMarketAnalyzer:
         recommendations = []
         if decision_result:
             recommendations = self.generate_actionable_recommendations(
-                decision_result, svd_data, liquidity_data, structure_data, current_price
+                decision_result, svd_data, liquidity_data, structure_data, current_price, ta_data
             )
 
         return {

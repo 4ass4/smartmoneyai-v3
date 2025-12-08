@@ -36,7 +36,15 @@ class SweptLevelsTracker:
         # Проверяем, нет ли уже такого уровня (в пределах 0.1%)
         for level in self.swept_levels:
             if abs(level["price"] - price) / price < 0.001:  # < 0.1%
-                # Обновляем timestamp (уровень swept повторно)
+                # КРИТИЧНО: НЕ инкрементируем count если это дубликат из того же цикла!
+                # Инкрементируем только если прошло > 60 секунд с последнего обновления
+                time_since_last = timestamp - level.get("timestamp", 0)
+                
+                if time_since_last < 60:  # < 1 минуты
+                    # Это дубликат из того же цикла анализа - игнорируем
+                    return
+                
+                # Прошло > 1 минуты - это НОВЫЙ sweep того же уровня
                 level["timestamp"] = timestamp
                 level["count"] = level.get("count", 1) + 1
                 if candles_ago and "candles_ago" not in level:

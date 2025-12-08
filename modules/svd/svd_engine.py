@@ -75,7 +75,7 @@ class SVDEngine:
         # Пороги
         cvd_threshold = 5.0  # Порог для значимого общего CVD
         cvd_slope_threshold = 0.5  # Порог для значимого slope
-        cvd_reversal_threshold = 2.0  # Порог для обнаружения разворота (сильное изменение slope)
+        cvd_reversal_threshold = 1.5  # Порог для обнаружения разворота (снижен с 2.0 для более ранней detection)
         
         # ОБНАРУЖЕНИЕ РАЗВОРОТА ТРЕНДА (высокий приоритет!)
         # Если общий CVD отрицательный, НО slope сильно положительный → начало разворота вверх
@@ -122,6 +122,23 @@ class SVDEngine:
             else:
                 intent = "unclear"
 
+        # КРИТИЧНО: Execution фаза → ПРИОРИТЕТ CVD slope!
+        # Если execution + CVD slope растёт → accumulating (даже если CVD negative)
+        # Если execution + CVD slope падает → distributing (даже если CVD positive)
+        if phase == "execution":
+            if cvd_slope > 1.0:  # Сильный рост CVD
+                if intent != "accumulating":
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"⚡ EXECUTION: CVD slope +{cvd_slope:.1f} → intent перезаписан на ACCUMULATING")
+                intent = "accumulating"
+            elif cvd_slope < -1.0:  # Сильное падение CVD
+                if intent != "distributing":
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"⚡ EXECUTION: CVD slope {cvd_slope:.1f} → intent перезаписан на DISTRIBUTING")
+                intent = "distributing"
+        
         # Усиливаем intent, если DOM подтверждает сторону
         if dom_imbalance.get("side") == "bid" and intent == "accumulating":
             intent = "accumulating"
