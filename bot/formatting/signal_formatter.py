@@ -30,6 +30,14 @@ def format_signal(signal_data, structure_data=None, liquidity_data=None, svd_dat
     
     emoji = emoji_map.get(signal, "⚪")
     
+    # Определяем уровень уверенности
+    if confidence >= 7.0:
+        confidence_level = "🔥 HIGH"
+    elif confidence >= 5.5:
+        confidence_level = "✅ MEDIUM"
+    else:
+        confidence_level = "⚠️ LOW"
+    
     # Если есть все данные - используем детальный формат
     if all([structure_data, liquidity_data, svd_data, ta_data, current_price]):
         # Генерируем детальное объяснение
@@ -51,7 +59,7 @@ def format_signal(signal_data, structure_data=None, liquidity_data=None, svd_dat
 💰 Цена: ${current_price:,.2f}
 
 {emoji} <b>СИГНАЛ: {signal}</b>
-📈 Уверенность: {confidence:.1f}/10
+📈 Уверенность: {confidence:.1f}/10 ({confidence_level})
 {warning}
 
 {detailed_explanation}
@@ -61,7 +69,7 @@ def format_signal(signal_data, structure_data=None, liquidity_data=None, svd_dat
         explanation = signal_data.get("explanation", "")
         message = f"""
 {emoji} <b>СИГНАЛ: {signal}</b>
-📊 Уверенность: {confidence:.1f}/10
+📊 Уверенность: {confidence:.1f}/10 ({confidence_level})
 
 📝 {explanation}
         """

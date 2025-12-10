@@ -146,15 +146,25 @@ class DecisionEngine:
         confidence = min(max(confidence, 0), 10)
         
         # ПРИНУДИТЕЛЬНЫЙ WAIT для низкой уверенности
-        # Если уверенность < 6.5 → слишком неопределенно для торговли
-        # КРИТИЧНО: Синхронизировано с risk_filters.py (MIN_CONFIDENCE = 6.5)
-        MIN_CONFIDENCE_TO_TRADE = 6.5
+        # Если уверенность < 5.5 → слишком неопределенно для торговли
+        # Синхронизировано с risk_filters.py (MIN_CONFIDENCE = 5.5)
+        # 5.5+ = хорошие сигналы (SVD + liquidity + structure)
+        MIN_CONFIDENCE_TO_TRADE = 5.5  # Снижен с 6.5 для отображения больше качественных сигналов
         if confidence < MIN_CONFIDENCE_TO_TRADE and direction != "WAIT":
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"⚠️ LOW CONFIDENCE: {confidence:.1f}/10 < {MIN_CONFIDENCE_TO_TRADE} "
                          f"→ принудительно WAIT вместо {direction}")
             direction = "WAIT"
+        
+        # Логирование уровня сигнала
+        if direction != "WAIT":
+            import logging
+            logger = logging.getLogger(__name__)
+            if confidence >= 7.0:
+                logger.info(f"🔥 HIGH CONFIDENCE SIGNAL: {direction} ({confidence:.1f}/10)")
+            elif confidence >= 5.5:
+                logger.info(f"✅ MEDIUM CONFIDENCE SIGNAL: {direction} ({confidence:.1f}/10)")
         
         # Генерация объяснения
         explanation = self._generate_explanation(signals, direction, confidence)

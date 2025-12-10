@@ -12,9 +12,10 @@ def apply_risk_filters(signals, confidence):
     Returns:
         Dict с результатом фильтрации
     """
-    # Минимальный confidence для БЕЗОПАСНОЙ торговли
-    # КРИТИЧНО: НЕ СНИЖАТЬ! Торговля с низкой уверенностью = слив депозита
-    MIN_CONFIDENCE = 6.5  # Торгуем только на сильных сигналах
+    # Минимальный confidence для торговли
+    # 5.5+ = хорошие сигналы (SVD intent + liquidity + structure)
+    # <5.5 = слабые сигналы (конфликты, неопределённость)
+    MIN_CONFIDENCE = 5.5  # Снижен с 6.5 для отображения больше качественных сигналов
     if confidence < MIN_CONFIDENCE:
         return {
             "allowed": False,
