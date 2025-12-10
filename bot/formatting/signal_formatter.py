@@ -35,8 +35,10 @@ def format_signal(signal_data, structure_data=None, liquidity_data=None, svd_dat
         confidence_level = "🔥 HIGH"
     elif confidence >= 5.5:
         confidence_level = "✅ MEDIUM"
-    else:
+    elif confidence >= 4.0:
         confidence_level = "⚠️ LOW"
+    else:
+        confidence_level = "❌ VERY LOW"
     
     # Если есть все данные - используем детальный формат
     if all([structure_data, liquidity_data, svd_data, ta_data, current_price]):

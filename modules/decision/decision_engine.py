@@ -146,14 +146,14 @@ class DecisionEngine:
         confidence = min(max(confidence, 0), 10)
         
         # ПРИНУДИТЕЛЬНЫЙ WAIT для низкой уверенности
-        # Если уверенность < 5.5 → слишком неопределенно для торговли
-        # Синхронизировано с risk_filters.py (MIN_CONFIDENCE = 5.5)
-        # 5.5+ = хорошие сигналы (SVD + liquidity + structure)
-        MIN_CONFIDENCE_TO_TRADE = 5.5  # Снижен с 6.5 для отображения больше качественных сигналов
+        # Если уверенность < 4.0 → слишком неопределенно для торговли
+        # Синхронизировано с risk_filters.py (MIN_CONFIDENCE = 4.0)
+        # АГРЕССИВНАЯ настройка для максимального количества сигналов
+        MIN_CONFIDENCE_TO_TRADE = 4.0  # Снижен с 5.5 для МАКСИМАЛЬНОГО количества сигналов
         if confidence < MIN_CONFIDENCE_TO_TRADE and direction != "WAIT":
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"⚠️ LOW CONFIDENCE: {confidence:.1f}/10 < {MIN_CONFIDENCE_TO_TRADE} "
+            logger.warning(f"⚠️ VERY LOW CONFIDENCE: {confidence:.1f}/10 < {MIN_CONFIDENCE_TO_TRADE} "
                          f"→ принудительно WAIT вместо {direction}")
             direction = "WAIT"
         
@@ -165,6 +165,8 @@ class DecisionEngine:
                 logger.info(f"🔥 HIGH CONFIDENCE SIGNAL: {direction} ({confidence:.1f}/10)")
             elif confidence >= 5.5:
                 logger.info(f"✅ MEDIUM CONFIDENCE SIGNAL: {direction} ({confidence:.1f}/10)")
+            elif confidence >= 4.0:
+                logger.info(f"⚠️ LOW CONFIDENCE SIGNAL: {direction} ({confidence:.1f}/10) - рискованный!")
         
         # Генерация объяснения
         explanation = self._generate_explanation(signals, direction, confidence)
