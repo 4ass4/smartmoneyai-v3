@@ -63,6 +63,36 @@ class TrapEngine:
         
         # === BULL TRAP DETECTION (толпа покупает, киты готовят дамп) ===
         
+        # 0. MANIPULATION TRAP — самый сильный сигнал!
+        # Фаза manipulation + сильный CVD slope + DOM spoof + liquidity opposite
+        # ЭТО КЛАССИЧЕСКАЯ ЛОВУШКА КИТОВ!
+        cvd_value = svd_data.get("cvd", 0)
+        is_manipulation_trap = (
+            phase == "manipulation" and
+            abs(cvd_slope) > 10 and  # Очень сильный CVD slope
+            spoof_confirmed and
+            (
+                # Bull trap: distributing + bid spoof + liquidity UP
+                (svd_intent == "distributing" and spoof_wall.get("side") == "bid" and liq_dir == "up") or
+                # Bear trap: accumulating + ask spoof + liquidity DOWN
+                (svd_intent == "accumulating" and spoof_wall.get("side") == "ask" and liq_dir == "down")
+            )
+        )
+        
+        if is_manipulation_trap:
+            if svd_intent == "distributing":
+                trap_score += 4.0  # ОЧЕНЬ СИЛЬНЫЙ сигнал
+                trap_reasons.append(f"🎭 MANIPULATION TRAP: киты создают иллюзию поддержки (bid spoof), толпу манят вверх (liq UP), но сами ПРОДАЮТ (CVD slope {cvd_slope:.1f})")
+                trap_type = "bull_trap"
+                expected_reversal = "down"
+                logger.info(f"🎭 BULL TRAP DETECTED: manipulation + CVD slope {cvd_slope:.1f} + bid spoof + liq UP")
+            else:  # accumulating
+                trap_score += 4.0
+                trap_reasons.append(f"🎭 MANIPULATION TRAP: киты создают давление (ask spoof), толпу пугают вниз (liq DOWN), но сами ПОКУПАЮТ (CVD slope {cvd_slope:.1f})")
+                trap_type = "bear_trap"
+                expected_reversal = "up"
+                logger.info(f"🎭 BEAR TRAP DETECTED: manipulation + CVD slope {cvd_slope:.1f} + ask spoof + liq DOWN")
+        
         # 1. FOMO + distributing intent
         if (fomo or strong_fomo) and svd_intent == "distributing":
             trap_score += 2.0

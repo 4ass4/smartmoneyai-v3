@@ -57,9 +57,26 @@ class DecisionEngine:
         conflict_result = self.conflict_detector.detect_conflicts(signals)
         signals["conflicts"] = conflict_result
         
+        # КРИТИЧНО: Проверяем trap СРАЗУ ПОСЛЕ конфликтов
+        # Чтобы не блокировать TRAP сигналы из-за "конфликтов"
+        # Trap Detection - ловушки для толпы
+        trap_result = self.trap_engine.analyze(
+            signals["svd"],
+            signals["liquidity"],
+            signals["structure"],
+            signals["ta"],
+            current_price
+        )
+        signals["trap"] = trap_result
+        
         # Проверка критичных конфликтов
+        # НО! Если обнаружен сильный TRAP → конфликты это ПРИЗНАК манипуляции!
         should_wait, conflict_reason = self.conflict_detector.should_force_wait(conflict_result)
-        if should_wait:
+        
+        # Если обнаружен TRAP с высоким score → НЕ блокируем сигнал из-за конфликтов
+        is_strong_trap = trap_result.get("is_trap") and trap_result.get("trap_score", 0) >= 4.0
+        
+        if should_wait and not is_strong_trap:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"🚫 Сигнал {direction} заблокирован из-за критичных конфликтов")
@@ -72,12 +89,25 @@ class DecisionEngine:
             }
         
         # Дополнительный штраф confidence за major конфликты
+        # НО! Если обнаружен TRAP → конфликты это ПРИЗНАК TRAP, не штрафуем!
         if conflict_result["severity"] == "major":
-            conflict_penalty = min(2.0, conflict_result["conflict_count"] * 0.5)
-            confidence -= conflict_penalty
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"   📉 Штраф за конфликты: -{conflict_penalty:.1f} (severity: major)")
+            # Если обнаружен сильный TRAP (score >= 4.0) → НЕ штрафуем
+            if is_strong_trap:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"🎭 TRAP DETECTED: конфликты это ПРИЗНАК манипуляции, НЕ штрафуем confidence")
+                logger.info(f"   🎭 Trap type: {trap_result.get('trap_type')}, score: {trap_result.get('trap_score'):.1f}")
+                # Наоборот УСИЛИВАЕМ confidence за обнаружение TRAP
+                trap_bonus = trap_result.get("trap_score", 0) * 0.5  # 50% от trap_score
+                confidence += trap_bonus
+                logger.info(f"   📈 Бонус за TRAP detection: +{trap_bonus:.1f}")
+            else:
+                # Обычный штраф за конфликты (если НЕ trap)
+                conflict_penalty = min(2.0, conflict_result["conflict_count"] * 0.5)
+                confidence -= conflict_penalty
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"   📉 Штраф за конфликты: -{conflict_penalty:.1f} (severity: major)")
         
         # Опциональный фильтр: только фаза execution (меньше шумов, выше "уверенность" в смысле действия китов)
         svd_phase = signals["svd"].get("phase", "discovery")
@@ -108,15 +138,8 @@ class DecisionEngine:
                 "explanation": filtered["reason"]
             }
         
-        # Trap Detection - ловушки для толпы
-        trap_result = self.trap_engine.analyze(
-            signals["svd"],
-            signals["liquidity"],
-            signals["structure"],
-            signals["ta"],
-            current_price
-        )
-        signals["trap"] = trap_result
+        # trap_result уже рассчитан выше (до проверки конфликтов)
+        # signals["trap"] уже установлен
         
         # Behavior Analysis - поведение толпы vs китов
         behavior_result = self.behavior_engine.analyze(
