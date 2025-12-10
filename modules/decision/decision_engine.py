@@ -324,7 +324,21 @@ class DecisionEngine:
             agreement += 2
         elif (trend == "bullish" and liq_dir == "down") or \
              (trend == "bearish" and liq_dir == "up"):
-            contradictions += 1  # Противоречие
+            # КРИТИЧНО: НЕ штрафуем за structure contradiction если есть сильные сигналы разворота!
+            # Если CVD reversal + execution + (RSI extreme ИЛИ sweep) → разворот тренда, structure устарела
+            rsi = signals["ta"].get("rsi", 50)
+            cvd_reversal = signals["svd"].get("cvd_reversal_detected", False)
+            is_reversal_setup = (
+                cvd_reversal and 
+                svd_phase == "execution" and
+                (rsi < 25 or rsi > 75 or sweeps.get("post_reversal"))
+            )
+            if not is_reversal_setup:
+                contradictions += 1  # Противоречие (но не при развороте!)
+            else:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"🔄 Разворот тренда: игнорируем structure contradiction (bearish → BUY reversal)")
         elif trend == "range":
             agreement += 1
         
@@ -333,7 +347,16 @@ class DecisionEngine:
             agreement += 1
         elif (ta_trend == "bullish" and trend == "bearish") or \
              (ta_trend == "bearish" and trend == "bullish"):
-            contradictions += 0.5  # Меньший вес для TA
+            # НЕ штрафуем за TA/Structure contradiction если есть reversal setup
+            rsi = signals["ta"].get("rsi", 50)
+            cvd_reversal = signals["svd"].get("cvd_reversal_detected", False)
+            is_reversal_setup = (
+                cvd_reversal and 
+                svd_phase == "execution" and
+                (rsi < 25 or rsi > 75 or sweeps.get("post_reversal"))
+            )
+            if not is_reversal_setup:
+                contradictions += 0.5  # Меньший вес для TA (но не при развороте!)
 
         # HTF bias: если совпадает — бонус, если против — небольшой штраф
         htf_bonus = 0
@@ -400,6 +423,33 @@ class DecisionEngine:
             import logging
             logger = logging.getLogger(__name__)
             logger.info(f"🔄 РАЗВОРОТ ТРЕНДА: CVD={cvd_value:.1f}, slope={cvd_slope:.1f} → бонус +1.5")
+        
+        # RSI EXTREME — сильный бонус за перепроданность/перекупленность
+        rsi = signals["ta"].get("rsi", 50)
+        if rsi < 25:  # Экстремальная перепроданность
+            rsi_bonus = 1.5  # Сильный бонус за разворот вверх
+            base_confidence += rsi_bonus
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"📈 RSI OVERSOLD: {rsi:.1f} < 25 → бонус +{rsi_bonus}")
+        elif rsi < 30:  # Перепроданность
+            rsi_bonus = 1.0
+            base_confidence += rsi_bonus
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"📈 RSI oversold: {rsi:.1f} < 30 → бонус +{rsi_bonus}")
+        elif rsi > 75:  # Экстремальная перекупленность
+            rsi_bonus = 1.5  # Сильный бонус за разворот вниз
+            base_confidence += rsi_bonus
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"📉 RSI OVERBOUGHT: {rsi:.1f} > 75 → бонус +{rsi_bonus}")
+        elif rsi > 70:  # Перекупленность
+            rsi_bonus = 1.0
+            base_confidence += rsi_bonus
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"📉 RSI overbought: {rsi:.1f} > 70 → бонус +{rsi_bonus}")
         
         # Если CVD подтверждает intent — бонус
         if cvd_confirms:
