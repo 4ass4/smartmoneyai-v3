@@ -254,26 +254,21 @@ class SVDEngine:
         phase_confidence = phase_info["phase_confidence"]
         phase_changed = phase_info["phase_changed"]
         
-        # КРИТИЧНО: Execution/Manipulation фаза → ПРИОРИТЕТ CVD slope!
-        # В активных фазах (execution, manipulation) CVD slope важнее общего CVD
-        # Если CVD slope растёт → accumulating (даже если CVD negative)
-        # Если CVD slope падает → distributing (даже если CVD positive)
-        if phase in ("execution", "manipulation"):
-            # Для manipulation используем более чувствительный порог (±0.5)
-            # т.к. это фаза активной манипуляции с меньшими объёмами
-            slope_threshold = 0.5 if phase == "manipulation" else 1.0
-            
-            if cvd_slope > slope_threshold:  # Рост CVD
+        # КРИТИЧНО: Execution фаза → ПРИОРИТЕТ CVD slope!
+        # Если execution + CVD slope растёт → accumulating (даже если CVD negative)
+        # Если execution + CVD slope падает → distributing (даже если CVD positive)
+        if phase == "execution":
+            if cvd_slope > 1.0:  # Сильный рост CVD
                 if intent != "accumulating":
                     import logging
                     logger = logging.getLogger(__name__)
-                    logger.info(f"⚡ {phase.upper()}: CVD slope +{cvd_slope:.1f} → intent перезаписан на ACCUMULATING")
+                    logger.info(f"⚡ EXECUTION: CVD slope +{cvd_slope:.1f} → intent перезаписан на ACCUMULATING")
                 intent = "accumulating"
-            elif cvd_slope < -slope_threshold:  # Падение CVD
+            elif cvd_slope < -1.0:  # Сильное падение CVD
                 if intent != "distributing":
                     import logging
                     logger = logging.getLogger(__name__)
-                    logger.info(f"⚡ {phase.upper()}: CVD slope {cvd_slope:.1f} → intent перезаписан на DISTRIBUTING")
+                    logger.info(f"⚡ EXECUTION: CVD slope {cvd_slope:.1f} → intent перезаписан на DISTRIBUTING")
                 intent = "distributing"
 
         return {

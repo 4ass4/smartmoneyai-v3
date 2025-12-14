@@ -11,6 +11,8 @@ from api.data_feed import DataFeed
 from modules.liquidity.liquidity_engine import LiquidityEngine
 from modules.svd.svd_engine import SVDEngine
 from modules.market_structure.market_structure_engine import MarketStructureEngine
+from modules.market_structure.historical_phase_analyzer import HistoricalPhaseAnalyzer
+from modules.market_structure.global_trend_analyzer import GlobalTrendAnalyzer
 from modules.ta_engine.ta_engine import TAEngine
 from modules.decision.decision_engine import DecisionEngine
 from modules.utils.data_validator import DataQualityValidator
@@ -59,6 +61,8 @@ async def main():
             liquidity_engine = LiquidityEngine()
             svd_engine = SVDEngine()
             market_structure_engine = MarketStructureEngine()
+            historical_phase_analyzer = HistoricalPhaseAnalyzer()
+            global_trend_analyzer = GlobalTrendAnalyzer()
             ta_engine = TAEngine()
             decision_engine = DecisionEngine(config)
             
@@ -72,7 +76,9 @@ async def main():
                 svd_engine,
                 market_structure_engine,
                 ta_engine,
-                health_monitor=health_monitor
+                health_monitor=health_monitor,
+                historical_phase_analyzer=historical_phase_analyzer,
+                global_trend_analyzer=global_trend_analyzer
             )
             
             # Регистрация команд
@@ -163,6 +169,15 @@ async def main():
                 # HTF liquidity
                 htf1_liq = liquidity_engine.analyze(htf1_df, htf1_struct) if not htf1_df.empty else {}
                 htf2_liq = liquidity_engine.analyze(htf2_df, htf2_struct) if not htf2_df.empty else {}
+                
+                # НОВОЕ: Исторический анализ фаз накопления/распределения на HTF
+                htf1_phases = historical_phase_analyzer.analyze_historical_phases(htf1_df, timeframe_name="HTF1 (1h)") if not htf1_df.empty else {}
+                htf2_phases = historical_phase_analyzer.analyze_historical_phases(htf2_df, timeframe_name="HTF2 (4h)") if not htf2_df.empty else {}
+                
+                # НОВОЕ: Глобальный тренд на основе HTF
+                global_trend = global_trend_analyzer.analyze_global_trend(
+                    htf1_struct, htf2_struct, htf1_phases, htf2_phases
+                )
                 
                 # 2. TA (сначала, чтобы получить ATR для нормировки)
                 ta_data = ta_engine.analyze(market_data["ohlcv"])

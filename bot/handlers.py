@@ -14,7 +14,8 @@ class BotHandlers:
     """
 
     def __init__(self, bot, decision_engine, data_feed, liquidity_engine, 
-                 svd_engine, market_structure_engine, ta_engine, health_monitor=None):
+                 svd_engine, market_structure_engine, ta_engine, health_monitor=None,
+                 historical_phase_analyzer=None, global_trend_analyzer=None):
         self.bot = bot
         self.decision_engine = decision_engine
         self.data_feed = data_feed
@@ -23,6 +24,8 @@ class BotHandlers:
         self.market_structure_engine = market_structure_engine
         self.ta_engine = ta_engine
         self.health_monitor = health_monitor
+        self.historical_phase_analyzer = historical_phase_analyzer
+        self.global_trend_analyzer = global_trend_analyzer
         self.last_signal = None  # Храним последний сигнал
 
     def set_last_signal(self, signal):
@@ -148,6 +151,27 @@ class BotHandlers:
             structure_data = self.market_structure_engine.analyze(market_data["ohlcv"])
             liquidity_data = self.liquidity_engine.analyze(market_data["ohlcv"], structure_data)
             
+            # Получаем HTF данные для исторического анализа
+            from config import Config
+            config = Config()
+            htf1_df = await self.data_feed.get_ohlcv_tf(config.HTF_1_INTERVAL)
+            htf2_df = await self.data_feed.get_ohlcv_tf(config.HTF_2_INTERVAL)
+            htf1_struct = self.market_structure_engine.analyze(htf1_df) if not htf1_df.empty else {"trend": "unknown"}
+            htf2_struct = self.market_structure_engine.analyze(htf2_df) if not htf2_df.empty else {"trend": "unknown"}
+            
+            # Исторический анализ фаз на HTF
+            htf1_phases = {}
+            htf2_phases = {}
+            global_trend = {}
+            if self.historical_phase_analyzer and self.global_trend_analyzer:
+                if not htf1_df.empty:
+                    htf1_phases = self.historical_phase_analyzer.analyze_historical_phases(htf1_df, timeframe_name="HTF1 (1h)")
+                if not htf2_df.empty:
+                    htf2_phases = self.historical_phase_analyzer.analyze_historical_phases(htf2_df, timeframe_name="HTF2 (4h)")
+                global_trend = self.global_trend_analyzer.analyze_global_trend(
+                    htf1_struct, htf2_struct, htf1_phases, htf2_phases
+                )
+            
             if market_data.get("trades") and market_data.get("orderbook"):
                 svd_data = self.svd_engine.analyze(market_data["trades"], market_data["orderbook"])
             else:
@@ -158,10 +182,14 @@ class BotHandlers:
             
             current_price = market_data["ohlcv"]["close"].iloc[-1]
             
-            # Глубокий анализ
+            # Глубокий анализ (передаём исторические фазы и глобальный тренд)
             deep_analyzer = DeepMarketAnalyzer()
             deep_report = deep_analyzer.generate_full_report(
-                liquidity_data, structure_data, svd_data, ta_data, current_price, decision_result=signal
+                liquidity_data, structure_data, svd_data, ta_data, current_price, 
+                decision_result=signal,
+                htf1_phases=htf1_phases,
+                htf2_phases=htf2_phases,
+                global_trend=global_trend
             )
             
             # Формируем глубокий отчет
@@ -244,6 +272,58 @@ class BotHandlers:
                 message_parts.append(f"   Причина: {lt.get('reason', '')}")
             
             message_parts.append("")
+            
+            # НОВОЕ: Исторические фазы и глобальный тренд
+            historical_phases = deep_report.get("historical_phases", {})
+            if historical_phases:
+                message_parts.append("🌍 ГЛОБАЛЬНЫЙ ТРЕНД И ИСТОРИЧЕСКИЕ ФАЗЫ:")
+                message_parts.append("")
+                
+                # Глобальный тренд
+                global_data = historical_phases.get("global", {})
+                if global_data:
+                    direction = global_data.get("direction", "neutral")
+                    strength = global_data.get("strength", 0.0)
+                    consensus = global_data.get("consensus", "neutral")
+                    recommendation = global_data.get("recommendation", "")
+                    
+                    direction_emoji = "📈" if direction == "up" else "📉" if direction == "down" else "⚪"
+                    consensus_emoji = "🔥" if consensus in ("strong_up", "strong_down") else "✅" if consensus in ("up", "down") else "⚠️"
+                    
+                    message_parts.append(f"{direction_emoji} ГЛОБАЛЬНОЕ НАПРАВЛЕНИЕ: {direction.upper()} (сила: {strength:.0%})")
+                    message_parts.append(f"{consensus_emoji} Консенсус таймфреймов: {consensus}")
+                    message_parts.append(f"   {recommendation}")
+                    message_parts.append("")
+                
+                # HTF1 (1h) фазы
+                htf1_data = historical_phases.get("htf1", {})
+                if htf1_data:
+                    global_trend_1h = htf1_data.get("global_trend", "neutral")
+                    current_phase_1h = htf1_data.get("current_phase", "neutral")
+                    duration_1h = htf1_data.get("current_duration_hours", 0.0)
+                    phase_count_1h = htf1_data.get("phase_count", 0)
+                    
+                    trend_emoji = "📈" if global_trend_1h == "accumulation" else "📉" if global_trend_1h == "distribution" else "⚪"
+                    message_parts.append(f"📊 HTF1 (1ч):")
+                    message_parts.append(f"   {trend_emoji} Глобальный тренд: {global_trend_1h}")
+                    message_parts.append(f"   Текущая фаза: {current_phase_1h} (длительность: {duration_1h:.1f}ч)")
+                    message_parts.append(f"   Всего фаз в истории: {phase_count_1h}")
+                    message_parts.append("")
+                
+                # HTF2 (4h) фазы
+                htf2_data = historical_phases.get("htf2", {})
+                if htf2_data:
+                    global_trend_4h = htf2_data.get("global_trend", "neutral")
+                    current_phase_4h = htf2_data.get("current_phase", "neutral")
+                    duration_4h = htf2_data.get("current_duration_hours", 0.0)
+                    phase_count_4h = htf2_data.get("phase_count", 0)
+                    
+                    trend_emoji = "📈" if global_trend_4h == "accumulation" else "📉" if global_trend_4h == "distribution" else "⚪"
+                    message_parts.append(f"📊 HTF2 (4ч):")
+                    message_parts.append(f"   {trend_emoji} Глобальный тренд: {global_trend_4h}")
+                    message_parts.append(f"   Текущая фаза: {current_phase_4h} (длительность: {duration_4h:.1f}ч)")
+                    message_parts.append(f"   Всего фаз в истории: {phase_count_4h}")
+                    message_parts.append("")
             
             # Действия умных денег
             message_parts.append("🧠 ДЕЙСТВИЯ УМНЫХ ДЕНЕГ:")

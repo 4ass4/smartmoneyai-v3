@@ -922,10 +922,69 @@ class DeepMarketAnalyzer:
             })
         
         return recommendations
+    
+    def _generate_historical_analysis(self, htf1_phases, htf2_phases, global_trend):
+        """
+        Генерирует анализ исторических фаз накопления/распределения
+        """
+        if not htf1_phases and not htf2_phases and not global_trend:
+            return {}
+        
+        analysis = {
+            "htf1": {},
+            "htf2": {},
+            "global": {}
+        }
+        
+        # HTF1 (1h) анализ
+        if htf1_phases:
+            analysis["htf1"] = {
+                "global_trend": htf1_phases.get("global_trend", "neutral"),
+                "trend_strength": htf1_phases.get("trend_strength", 0.0),
+                "current_phase": htf1_phases.get("current_phase", "neutral"),
+                "current_duration_hours": htf1_phases.get("current_phase_duration_hours", 0.0),
+                "phase_count": len(htf1_phases.get("phase_history", [])),
+                "accumulation_zones": len(htf1_phases.get("accumulation_zones", [])),
+                "distribution_zones": len(htf1_phases.get("distribution_zones", []))
+            }
+        
+        # HTF2 (4h) анализ
+        if htf2_phases:
+            analysis["htf2"] = {
+                "global_trend": htf2_phases.get("global_trend", "neutral"),
+                "trend_strength": htf2_phases.get("trend_strength", 0.0),
+                "current_phase": htf2_phases.get("current_phase", "neutral"),
+                "current_duration_hours": htf2_phases.get("current_phase_duration_hours", 0.0),
+                "phase_count": len(htf2_phases.get("phase_history", [])),
+                "accumulation_zones": len(htf2_phases.get("accumulation_zones", [])),
+                "distribution_zones": len(htf2_phases.get("distribution_zones", []))
+            }
+        
+        # Глобальный тренд
+        if global_trend:
+            analysis["global"] = {
+                "direction": global_trend.get("global_direction", "neutral"),
+                "strength": global_trend.get("global_trend_strength", 0.0),
+                "consensus": global_trend.get("consensus", "neutral"),
+                "trend_alignment": global_trend.get("trend_alignment", 0.0),
+                "recommendation": global_trend.get("recommendation", ""),
+                "htf1_trend": global_trend.get("htf1_trend", "unknown"),
+                "htf2_trend": global_trend.get("htf2_trend", "unknown"),
+                "htf1_phase": global_trend.get("htf1_phase", "neutral"),
+                "htf2_phase": global_trend.get("htf2_phase", "neutral")
+            }
+        
+        return analysis
 
-    def generate_full_report(self, liquidity_data, structure_data, svd_data, ta_data, current_price, decision_result=None):
+    def generate_full_report(self, liquidity_data, structure_data, svd_data, ta_data, current_price, 
+                            decision_result=None, htf1_phases=None, htf2_phases=None, global_trend=None):
         """
         Генерация полного глубокого отчета
+        
+        Args:
+            htf1_phases: исторические фазы для HTF1 (1h)
+            htf2_phases: исторические фазы для HTF2 (4h)
+            global_trend: глобальный тренд на основе HTF
         """
         # Анализ ликвидности
         liquidity_analysis = self.analyze_liquidity_zones(liquidity_data, structure_data, current_price)
@@ -948,11 +1007,15 @@ class DeepMarketAnalyzer:
                 decision_result, svd_data, liquidity_data, structure_data, current_price, ta_data
             )
 
+        # НОВОЕ: Исторические фазы и глобальный тренд
+        historical_analysis = self._generate_historical_analysis(htf1_phases, htf2_phases, global_trend)
+        
         return {
             "liquidity_analysis": liquidity_analysis,
             "forecast": forecast,
             "smart_money": smart_money,
             "scenarios": scenarios,
-            "recommendations": recommendations
+            "recommendations": recommendations,
+            "historical_phases": historical_analysis
         }
 
