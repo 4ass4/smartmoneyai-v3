@@ -114,6 +114,29 @@ class BotHandlers:
             elif signal_type == "SELL" and svd_intent == "accumulating":
                 warning = "\n\n⚠️ ВНИМАНИЕ: Противоречие - SVD показывает накопление, но сигнал SELL"
             
+            # НОВОЕ: Торговый сигнал (вход в коридоре)
+            trading_entry = signal.get("trading_entry", {})
+            trading_section = ""
+            if trading_entry.get("entry_signal") != "WAIT":
+                entry_signal_type = trading_entry.get("entry_signal", "WAIT")
+                entry_price = trading_entry.get("entry_price", current_price)
+                entry_confidence = trading_entry.get("entry_confidence", 0.0)
+                stop_loss = trading_entry.get("stop_loss", 0)
+                take_profit = trading_entry.get("take_profit", 0)
+                risk_reward = trading_entry.get("risk_reward_ratio", 0.0)
+                entry_reason = trading_entry.get("entry_reason", "")
+                
+                trading_section = f"""
+
+📊 ТОРГОВЫЙ СИГНАЛ (коридор + накопление):
+🎯 {entry_signal_type} от ${entry_price:.2f}
+📈 Уверенность: {entry_confidence:.1f}/1.0
+🛑 Стоп-лосс: ${stop_loss:.2f}
+🎯 Тейк-профит: ${take_profit:.2f}
+📊 R/R: {risk_reward:.2f}
+💡 {entry_reason}
+"""
+            
             # Формируем сообщение
             message = f"""
 📊 ТЕКУЩИЙ АНАЛИЗ РЫНКА
@@ -123,7 +146,7 @@ class BotHandlers:
 🎯 СИГНАЛ: {signal_type}
 📈 Уверенность: {confidence:.1f}/10
 {warning}
-
+{trading_section}
 {detailed_explanation}
 
 💡 Используйте /analysis для полного глубокого анализа с прогнозами
@@ -346,6 +369,38 @@ class BotHandlers:
                 message_parts.append(f"   Срок: {scenario.get('timeframe', 'N/A')}")
             
             message_parts.append("")
+            
+            # НОВОЕ: Торговый сигнал (вход в коридоре при накоплении)
+            trading_entry = signal.get("trading_entry", {})
+            if trading_entry.get("entry_signal") != "WAIT":
+                message_parts.append("📊 ТОРГОВЫЙ СИГНАЛ (коридор + накопление):")
+                entry_signal_type = trading_entry.get("entry_signal", "WAIT")
+                entry_price = trading_entry.get("entry_price", current_price)
+                entry_confidence = trading_entry.get("entry_confidence", 0.0)
+                stop_loss = trading_entry.get("stop_loss", 0)
+                take_profit = trading_entry.get("take_profit", 0)
+                risk_reward = trading_entry.get("risk_reward_ratio", 0.0)
+                entry_reason = trading_entry.get("entry_reason", "")
+                
+                signal_emoji = "🟢" if entry_signal_type == "BUY" else "🔴" if entry_signal_type == "SELL" else "🟡"
+                message_parts.append(f"{signal_emoji} {entry_signal_type} от ${entry_price:.2f}")
+                message_parts.append(f"📈 Уверенность входа: {entry_confidence:.1f}/1.0")
+                message_parts.append(f"🛑 Стоп-лосс: ${stop_loss:.2f}")
+                message_parts.append(f"🎯 Тейк-профит: ${take_profit:.2f}")
+                message_parts.append(f"📊 Risk/Reward: {risk_reward:.2f}")
+                message_parts.append(f"💡 {entry_reason}")
+                
+                # Информация о коридоре
+                range_data = signal.get("range_data", {})
+                if range_data.get("is_range"):
+                    range_low = range_data.get("range_low", 0)
+                    range_high = range_data.get("range_high", 0)
+                    range_width = range_data.get("range_width_pct", 0.0)
+                    current_position = range_data.get("current_position", "middle")
+                    message_parts.append("")
+                    message_parts.append(f"📊 Коридор: ${range_low:.2f} - ${range_high:.2f} (ширина: {range_width:.2f}%)")
+                    message_parts.append(f"📍 Позиция цены в коридоре: {current_position}")
+                message_parts.append("")
             
             # Практические рекомендации
             recommendations = deep_report.get("recommendations", [])

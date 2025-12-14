@@ -15,6 +15,7 @@ from modules.market_structure.historical_phase_analyzer import HistoricalPhaseAn
 from modules.market_structure.global_trend_analyzer import GlobalTrendAnalyzer
 from modules.ta_engine.ta_engine import TAEngine
 from modules.decision.decision_engine import DecisionEngine
+from modules.trading import RangeDetector, EntryStrategy
 from modules.utils.data_validator import DataQualityValidator
 from modules.utils.healthcheck import HealthMonitor
 from modules.alerts import AlertManager
@@ -65,6 +66,9 @@ async def main():
             global_trend_analyzer = GlobalTrendAnalyzer()
             ta_engine = TAEngine()
             decision_engine = DecisionEngine(config)
+            # НОВОЕ: Торговая система для работы в коридорах
+            range_detector = RangeDetector(lookback_candles=20, range_threshold_pct=2.0)
+            entry_strategy = EntryStrategy()
             
             # Инициализация обработчиков команд
             application = Application.builder().token(bot_token).build()
@@ -179,6 +183,21 @@ async def main():
                     htf1_struct, htf2_struct, htf1_phases, htf2_phases
                 )
                 
+                # НОВОЕ: Торговая система - анализ коридора и сигналов входа
+                current_price = market_data["ohlcv"]["close"].iloc[-1]
+                range_data = range_detector.detect_range(market_data["ohlcv"], current_price)
+                
+                # Определяем фазу накопления (используем HTF1 как основной для краткосрочной торговли)
+                accumulation_phase = htf1_phases if htf1_phases else {}
+                
+                # Рассчитываем сигнал входа
+                entry_signal = entry_strategy.calculate_entry_signal(
+                    global_trend,
+                    accumulation_phase,
+                    range_data,
+                    current_price
+                )
+                
                 # 2. TA (сначала, чтобы получить ATR для нормировки)
                 ta_data = ta_engine.analyze(market_data["ohlcv"])
                 atr_pct = ta_data.get("atr_pct", None)
@@ -193,7 +212,7 @@ async def main():
                     svd_data = {"intent": "unclear", "confidence": 0}
                 
                 # 5. Decision (передаем текущую цену, HTF контекст и качество данных)
-                current_price = market_data["ohlcv"]["close"].iloc[-1]
+                # current_price уже определён выше
                 signal = decision_engine.analyze(
                     liquidity_data,
                     svd_data,
@@ -215,6 +234,20 @@ async def main():
                 # (временное решение, лучше передавать в analyze)
                 if "current_price" not in signal:
                     signal["current_price"] = current_price
+                
+                # НОВОЕ: Добавляем торговый сигнал (вход в коридоре при накоплении)
+                signal["trading_entry"] = entry_signal
+                signal["range_data"] = range_data
+                
+                # Логируем торговый сигнал если есть
+                if entry_signal.get("entry_signal") != "WAIT":
+                    logger.info(f"📊 ТОРГОВЫЙ СИГНАЛ: {entry_signal['entry_signal']} "
+                               f"от ${entry_signal['entry_price']:.2f} "
+                               f"(confidence: {entry_signal['entry_confidence']:.2f}, "
+                               f"R/R: {entry_signal['risk_reward_ratio']:.2f})")
+                    logger.info(f"   Стоп: ${entry_signal['stop_loss']:.2f}, "
+                               f"Тейк: ${entry_signal['take_profit']:.2f}")
+                    logger.info(f"   Причина: {entry_signal['entry_reason']}")
                 
                 # Сохранение последнего сигнала для handlers
                 if handlers:
